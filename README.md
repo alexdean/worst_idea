@@ -14,3 +14,10 @@ An interactive game for live groups.
      but cannot participate.
   1. Play stops when only 1 person remains, or when questions run out, or when
      it's not fun anymore.
+
+## Architecture
+
+  * Data stored in [Google Cloud Firestore](https://firebase.google.com/docs/firestore).
+  * Admin & player apps implemented in JavaScript.
+  * Some backend processes implemented in ruby. Example: Building summaries of
+    answer counts during voting.
