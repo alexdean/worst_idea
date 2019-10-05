@@ -21,3 +21,18 @@ An interactive game for live groups.
   * Admin & player apps implemented in JavaScript.
   * Some backend processes implemented in ruby. Example: Building summaries of
     answer counts during voting.
+
+## Develoment
+
+To build & test security rules:
+
+Follow the [setup guide](https://github.com/firebase/quickstart-nodejs/tree/master/firestore-emulator/javascript-quickstart).
+
+  1. `nvm use`
+  1. `cd config/firestore_rules`
+  1. edit `firestore.rules` and `test.js`
+  1. `npx firebase emulators:start --only firestore`
+  1. in a separate window: `npm test`
+  1. when everything passes, copy/paste rules to Firestore web UI.
+
+https://firebase.google.com/docs/firestore/security/test-rules-emulator
