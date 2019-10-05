@@ -3,6 +3,7 @@ log.formatter = nil
 
 namespace :admin do
   task create_game: :environment do
+    # ENV['TITLE'] can be used but is optional.
     if !ENV['TEMPLATE']
       puts "TEMPLATE= is required."
       exit 1
@@ -21,10 +22,14 @@ namespace :admin do
     games = client.col('games')
     game = games.doc(game_name)
     game.set(
-      leader_player_id: '',
-      active_question_id: 0,
-      joinable: true,
+      title: ENV['TITLE'] || game_name,
+      leader_player_id: nil,
+      active_question_id: nil,
+      is_joinable: true,
       created_at: now
+      # these might make security rules easier to write...
+      # active_player_ids: [],
+      # valid_answer_ids_for_active_question: []
     )
 
     questions = game.col('questions')
