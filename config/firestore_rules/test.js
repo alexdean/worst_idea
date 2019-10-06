@@ -53,11 +53,20 @@ describe("worst idea", () => {
     await firebase.assertFails(games.get());
   });
 
+  it('allows users to list open games', async () => {
+    const admin = adminApp();
+    await admin.collection('games').doc('game1').set({current_stage: 'joining'});
+    await admin.collection('games').doc('game2').set({current_stage: 'in-progress'});
+
+    const db = authedApp({uid: 'alice'});
+    await firebase.assertSucceeds(db.collection('games').where('current_stage', '==', 'joining').get());
+  });
+
   describe("joining a game", () => {
     beforeEach(async () => {
       const admin = adminApp();
-      await admin.collection('games').doc('joinable_game').set({stage: 'joining'})
-      await admin.collection('games').doc('unjoinable_game').set({stage: 'in-progress'})
+      await admin.collection('games').doc('joinable_game').set({current_stage: 'joining'})
+      await admin.collection('games').doc('unjoinable_game').set({current_stage: 'in-progress'})
     });
 
     it("allows users to join a joinable game", async () => {
@@ -90,7 +99,7 @@ describe("worst idea", () => {
       const admin = adminApp();
       const game = admin.collection('games').doc('game')
       await game.set({
-        stage: 'in-progress',
+        current_stage: 'in-progress',
         active_question_id: '3',
         active_question_max_answer_id: 2,
       });
@@ -145,8 +154,8 @@ describe("worst idea", () => {
       const admin = adminApp();
       const game = admin.collection('games').doc('game')
       await game.set({
-        stage: 'finished',
-        // these should be null when game is finished. leaving values to ensure test fails due to stage
+        current_stage: 'finished',
+        // these should be null when game is finished. leaving values to ensure test fails due to current_stage
         // condition not being met.
         active_question_id: 3,
         active_question_max_answer_id: 3,

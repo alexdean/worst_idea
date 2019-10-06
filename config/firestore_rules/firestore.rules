@@ -2,7 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /games/{game_id} {
-      allow read: if request.auth.uid;
+      allow read: if request.auth.uid != null;
 
       function gameDoc() {
         return get(/databases/$(database)/documents/games/$(game_id));
@@ -12,7 +12,7 @@ service cloud.firestore {
       // game stages: joining, in-progress, finished
       match /players/{uid} {
         allow read, write: if request.auth.uid == uid
-                              && gameDoc().data.stage == 'joining';
+                              && gameDoc().data.current_stage == 'joining';
       }
 
       match /player_answers/{uid} {
@@ -22,7 +22,7 @@ service cloud.firestore {
 
         allow read, write: if request.auth.uid == uid
                               && playerDoc().data.is_active == true
-                              && gameDoc().data.stage == 'in-progress'
+                              && gameDoc().data.current_stage == 'in-progress'
                               && request.resource.data.answer is int
                               && request.resource.data.answer <= gameDoc().data.active_question_max_answer_id
                               && request.resource.data.answer >= 0;
