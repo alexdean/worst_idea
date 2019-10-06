@@ -3,11 +3,23 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /games/{game_id} {
       allow read: if request.auth.uid;
-    }
 
-    // authenticated players can join a joinable game
-    match /games/{game_id}/players/{uid} {
-      allow read, write: if request.auth.uid == uid && get(/databases/$(database)/documents/games/$(game_id)).data.is_joinable == true;
+      function gameDoc() {
+        return get(/databases/$(database)/documents/games/$(game_id));
+      }
+
+      // authenticated players can join a joinable game
+      match /players/{uid} {
+        allow read, write: if request.auth.uid == uid && gameDoc().data.is_joinable == true;
+      }
+
+      match /player_answers/{uid}/answers/{question_id} {
+        function playerDoc() {
+          return get(/databases/$(database)/documents/games/$(game_id)/players/$(uid));
+        }
+
+        allow read, write: if request.auth.uid == uid && playerDoc().data.is_active && gameDoc().data.active_question_id == question_id;
+      }
     }
   }
 }

@@ -56,8 +56,9 @@ describe("worst idea", () => {
   describe("joining a game", () => {
     beforeEach(async () => {
       const admin = adminApp();
-      admin.collection('games').doc('joinable_game').set({is_joinable: true})
-      admin.collection('games').doc('unjoinable_game').set({is_joinable: false})
+      await admin.collection('games').doc('joinable_game').set({is_joinable: true})
+      // admin.collection('games').doc('joinable_game').collection('players')
+      await admin.collection('games').doc('unjoinable_game').set({is_joinable: false})
     });
 
     it("allows users to join a joinable game", async () => {
@@ -73,12 +74,12 @@ describe("worst idea", () => {
     });
   });
 
-  it('does not allow players to modify other players', async() => {
+  it('does not allow players to modify other players', async () => {
     const admin = adminApp();
     const game = admin.collection('games').doc('game')
-    game.set({is_joinable: true});
-    game.collection('players').doc('alice').set({is_active: true});
-    game.collection('players').doc('bob').set({is_active: true});
+    await game.set({is_joinable: true});
+    await game.collection('players').doc('alice').set({is_active: true});
+    await game.collection('players').doc('bob').set({is_active: true});
 
     const db = authedApp({uid: 'alice'});
     bob = db.collection('games').doc('game').collection('players').doc('bob')
@@ -86,9 +87,86 @@ describe("worst idea", () => {
   })
 
   describe("providing an answer", () => {
-    it('requires player to be active in the game')
-    it('requires an answer which is valid for the question')
-    it('requires the question to be current for the game')
+    beforeEach(async () => {
+      const admin = adminApp();
+      const game = admin.collection('games').doc('game')
+      await game.set({
+        is_joinable: false,
+        active_question_id: '2'
+      });
+
+      const players = game.collection('players');
+      await players.doc('alice').set({is_active: true});
+      await players.doc('bob').set({is_active: false});
+
+      // game.collection('player_answers').doc('2').set({placeholder: true});
+
+      const questions = game.collection('questions');
+      // not the current question. (see game's active_question_id)
+      await questions.doc('1').set({
+        answers: {
+          0: "a",
+          1: "b",
+          2: "c"
+        },
+        question: "what is the best number?",
+        sequence: 1,
+        summary: {}
+      });
+      // the current question. (see game's active_question_id)
+      await questions.doc('2').set({
+        answers: {
+          0: "zero",
+          1: "one",
+          2: "two"
+        },
+        question: "what is the worst number?",
+        sequence: 2,
+        summary: {}
+      });
+    });
+
+    it('requires player to be active in the game', async () => {
+      const alice = authedApp({uid: 'alice'});
+      const bob = authedApp({uid: 'bob'});
+
+      // alice is active so she can provide an answer to the current question.
+      await firebase.assertSucceeds(
+        // alice selects answer 1 for question 2. set({2: 1})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('2').set({'a': 1})
+      );
+      // bob is inactive so he cannot.
+      await firebase.assertFails(
+        bob.collection('games').doc('game').collection('player_answers').doc('bob').collection('answers').doc('2').set({'a': 1})
+      );
+    });
+
+    it('requires an answer which is valid for the question', async () => {
+      const alice = authedApp({uid: 'alice'});
+
+      // question 2 has answers 0-2.
+      await firebase.assertSucceeds(
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('2').set({'a': 1})
+      );
+      // can't add an answer that's out of range
+      await firebase.assertFails(
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('2').set({'a': 5})
+      );
+    });
+
+    it('requires the question to be current for the game', async () => {
+      const alice = authedApp({uid: 'alice'});
+      const bob = authedApp({uid: 'bob'});
+
+      // question 2 is current.
+      await firebase.assertSucceeds(
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('2').set({'a': 1})
+      );
+      // cant answer question 1. it's not current.
+      await firebase.assertFails(
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('1').set({'a': 1})
+      );
+    })
   });
 
   describe("reading game state", () => {
