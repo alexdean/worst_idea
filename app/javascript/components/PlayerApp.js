@@ -15,6 +15,14 @@ class PlayerApp extends React.Component {
       console.error('firebase auth error', error);
     });
 
+    // example of querying for data.
+    // this fetches a list of available games.
+    firebase.firestore().collection('games').where('current_stage', '==', 'joining').get().then(snapshot => {
+      snapshot.forEach(doc => {
+        console.log(`found open game: ${doc.data().title}`);
+      });
+    })
+
     return(
       <div>Hello</div>
     )
