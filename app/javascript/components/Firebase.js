@@ -1,7 +1,10 @@
-import * as firebase from 'firebase';
-import firestore from 'firebase/firestore'
+// import * as firebase from 'firebase';
+// import firestore from 'firebase/firestore'
 
-const settings = {timestampsInSnapshots: true};
+import firebase from 'firebase/app';
+import 'firebase/firestore';
+
+const settings = {};
 const config = {
   "apiKey": "AIzaSyCkAeXDokAKJ6RHRe1KTQUW05TLN3GPb5k",
   "authDomain": "bad-ideas.firebaseapp.com",
