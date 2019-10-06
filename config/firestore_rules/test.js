@@ -47,7 +47,7 @@ after(async () => {
 });
 
 describe("worst idea", () => {
-  it('does not allow unauthenticate user to read', async () => {
+  it('does not allow unauthenticated user to read', async () => {
     const db = authedApp(null);
     const games = db.collection('games');
     await firebase.assertFails(games.get());
@@ -56,9 +56,8 @@ describe("worst idea", () => {
   describe("joining a game", () => {
     beforeEach(async () => {
       const admin = adminApp();
-      await admin.collection('games').doc('joinable_game').set({is_joinable: true})
-      // admin.collection('games').doc('joinable_game').collection('players')
-      await admin.collection('games').doc('unjoinable_game').set({is_joinable: false})
+      await admin.collection('games').doc('joinable_game').set({stage: 'joining'})
+      await admin.collection('games').doc('unjoinable_game').set({stage: 'in-progress'})
     });
 
     it("allows users to join a joinable game", async () => {
@@ -91,39 +90,14 @@ describe("worst idea", () => {
       const admin = adminApp();
       const game = admin.collection('games').doc('game')
       await game.set({
-        is_joinable: false,
-        active_question_id: '2'
+        stage: 'in-progress',
+        active_question_id: '3',
+        active_question_max_answer_id: 2,
       });
 
       const players = game.collection('players');
       await players.doc('alice').set({is_active: true});
       await players.doc('bob').set({is_active: false});
-
-      // game.collection('player_answers').doc('2').set({placeholder: true});
-
-      const questions = game.collection('questions');
-      // not the current question. (see game's active_question_id)
-      await questions.doc('1').set({
-        answers: {
-          0: "a",
-          1: "b",
-          2: "c"
-        },
-        question: "what is the best number?",
-        sequence: 1,
-        summary: {}
-      });
-      // the current question. (see game's active_question_id)
-      await questions.doc('2').set({
-        answers: {
-          0: "zero",
-          1: "one",
-          2: "two"
-        },
-        question: "what is the worst number?",
-        sequence: 2,
-        summary: {}
-      });
     });
 
     it('requires player to be active in the game', async () => {
@@ -133,11 +107,13 @@ describe("worst idea", () => {
       // alice is active so she can provide an answer to the current question.
       await firebase.assertSucceeds(
         // alice selects answer 1 for question 2. set({2: 1})
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('2').set({'a': 1})
+        // maybe could be simpler if we used doc('alice').set({question_id: answer_id})
+        // and https://firebase.google.com/docs/reference/rules/rules.Map.html
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 1})
       );
       // bob is inactive so he cannot.
       await firebase.assertFails(
-        bob.collection('games').doc('game').collection('player_answers').doc('bob').collection('answers').doc('2').set({'a': 1})
+        bob.collection('games').doc('game').collection('player_answers').doc('bob').set({'answer': 1})
       );
     });
 
@@ -146,25 +122,42 @@ describe("worst idea", () => {
 
       // question 2 has answers 0-2.
       await firebase.assertSucceeds(
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('2').set({'a': 1})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 2})
       );
       // can't add an answer that's out of range
       await firebase.assertFails(
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('2').set({'a': 5})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 5})
+      );
+      await firebase.assertFails(
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': -1})
       );
     });
 
-    it('requires the question to be current for the game', async () => {
+    it('requires an integer answer', async () => {
       const alice = authedApp({uid: 'alice'});
-      const bob = authedApp({uid: 'bob'});
 
-      // question 2 is current.
-      await firebase.assertSucceeds(
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('2').set({'a': 1})
-      );
-      // cant answer question 1. it's not current.
       await firebase.assertFails(
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').collection('answers').doc('1').set({'a': 1})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 'NaN'})
+      );
+    });
+
+    it('does not allow users to set answers unless game is in-progress', async () => {
+      const admin = adminApp();
+      const game = admin.collection('games').doc('game')
+      await game.set({
+        stage: 'finished',
+        // these should be null when game is finished. leaving values to ensure test fails due to stage
+        // condition not being met.
+        active_question_id: 3,
+        active_question_max_answer_id: 3,
+      });
+
+      const players = game.collection('players');
+      await players.doc('alice').set({is_active: true});
+
+      const alice = authedApp({uid: 'alice'});
+      await firebase.assertFails(
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 1})
       );
     })
   });

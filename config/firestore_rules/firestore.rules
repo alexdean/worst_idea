@@ -9,16 +9,23 @@ service cloud.firestore {
       }
 
       // authenticated players can join a joinable game
+      // game stages: joining, in-progress, finished
       match /players/{uid} {
-        allow read, write: if request.auth.uid == uid && gameDoc().data.is_joinable == true;
+        allow read, write: if request.auth.uid == uid
+                              && gameDoc().data.stage == 'joining';
       }
 
-      match /player_answers/{uid}/answers/{question_id} {
+      match /player_answers/{uid} {
         function playerDoc() {
           return get(/databases/$(database)/documents/games/$(game_id)/players/$(uid));
         }
 
-        allow read, write: if request.auth.uid == uid && playerDoc().data.is_active && gameDoc().data.active_question_id == question_id;
+        allow read, write: if request.auth.uid == uid
+                              && playerDoc().data.is_active == true
+                              && gameDoc().data.stage == 'in-progress'
+                              && request.resource.data.answer is int
+                              && request.resource.data.answer <= gameDoc().data.active_question_max_answer_id
+                              && request.resource.data.answer >= 0;
       }
     }
   }
