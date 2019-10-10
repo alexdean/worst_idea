@@ -6,7 +6,7 @@ import firebase from "./firebase";
 const Player = () => {
   const db = firebase.firestore();
 
-  const [user, initialising, error] = useAuthState(firebase.auth());
+  const [user, initializing, error] = useAuthState(firebase.auth());
 
   const login = () => {
     firebase
@@ -59,33 +59,33 @@ const Player = () => {
     });
   }, [user]);
 
-  if (initialising) {
-    return (
-      <div>
-        <p>Initialising User...</p>
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div>
-        <p>Error: {error}</p>
-      </div>
-    );
-  }
   if (user) {
     return (
-      <div>
+      <div className="m-10">
         <p>Current User: {user.uid}</p>
-        <button onClick={logout}>Log out</button>
+        <button className="bg-black text-white p-2" onClick={logout}>
+          Log out
+        </button>
       </div>
     );
   }
 
   return (
-    <div className="">
+    <div className="m-10">
+      {initializing && (
+        <div>
+          <p>Initializing User...</p>
+        </div>
+      )}
+      {error && (
+        <div>
+          <p>Error: {error}</p>
+        </div>
+      )}
       <div className="">Hi.</div>
-      <button onClick={login}>Log in</button>
+      <button className="bg-black text-white p-2" onClick={login}>
+        Log in
+      </button>
     </div>
   );
 };
