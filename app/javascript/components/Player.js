@@ -1,12 +1,22 @@
 import React, { useContext, useState, useEffect } from "react";
 import { useAuthState } from "react-firebase-hooks/auth";
-import { useCollection } from "react-firebase-hooks/firestore";
+import { useCollectionOnce } from "react-firebase-hooks/firestore";
 import firebase from "./firebase";
 
-const Player = () => {
-  const db = firebase.firestore();
+const db = firebase.firestore();
 
-  const [user, initializing, error] = useAuthState(firebase.auth());
+const Player = () => {
+  const [gameId, setGameId] = useState(null); // stores the gameId
+  const [user, initializing, error] = useAuthState(firebase.auth()); // establishes and maintains fb auth
+
+  // gets all the questions for the gameId stored in the above state...
+  const [questionsValue, questionsLoading, questionsError] = useCollectionOnce(
+    gameId &&
+      db
+        .collection("games")
+        .doc(gameId)
+        .collection("questions")
+  );
 
   const login = () => {
     firebase
@@ -37,15 +47,18 @@ const Player = () => {
       .set({ is_active: true });
   };
 
+  // useEffect runs whenever the values listed in the last argument change
+  // In this case, whenever {user} updates
   useEffect(() => {
-    console.log("Starting");
     listAvailableGames().then(snapshot => {
       const games = [];
       snapshot.forEach(doc => {
         console.log("Found open game:", doc.data().title);
         games.push(doc.data().title);
       });
+
       if (user && games.length > 0) {
+        setGameId(games[0]);
         console.log("Joining first available game");
         joinGame(games[0]).then(
           response => {
@@ -59,10 +72,23 @@ const Player = () => {
     });
   }, [user]);
 
+  // If auth'd...
   if (user) {
     return (
       <div className="m-10">
-        <p>Current User: {user.uid}</p>
+        <div>Current User: {user.uid}</div>
+        <div className="p-2 bg-blue-100">
+          {questionsLoading && <div className="">Loading</div>}
+          {questionsError && <div className="">{JSON.stringify(error)}</div>}
+          {questionsValue &&
+            questionsValue.docs.map((doc, i) => {
+              return (
+                <div key={i} className="">
+                  {doc.data().question}
+                </div>
+              );
+            })}
+        </div>
         <button className="bg-black text-white p-2" onClick={logout}>
           Log out
         </button>
@@ -70,6 +96,7 @@ const Player = () => {
     );
   }
 
+  // If user not defined, render the start button
   return (
     <div className="m-10">
       {initializing && (
@@ -82,9 +109,9 @@ const Player = () => {
           <p>Error: {error}</p>
         </div>
       )}
-      <div className="">Hi.</div>
+      <div className="">Click the button to start the game</div>
       <button className="bg-black text-white p-2" onClick={login}>
-        Log in
+        Start
       </button>
     </div>
   );
