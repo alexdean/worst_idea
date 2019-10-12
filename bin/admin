@@ -221,10 +221,10 @@ class WorstIdeaAdmin < Thor
     # TODO: struct for game state
 
     next_game_state = GameState.new
+    next_question_id = nil
     case game_data[:current_stage]
     when GameState::JOINING then
-      next_game_state.set(:current_stage, GameState::QUESTION_OPEN)
-      next_game_state.set(:active_question_id, 0)
+      next_question_id = 0
     when GameState::QUESTION_OPEN then
       next_game_state.set(:current_stage, GameState::QUESTION_CLOSED)
     when GameState::QUESTION_CLOSED then
@@ -232,6 +232,14 @@ class WorstIdeaAdmin < Thor
     when GameState::QUESTION_RESULTS then
       current_question_id = game_data[:active_question_id]
       next_question_id = current_question_id + 1
+    when GameState::FINISHED then
+      log.info 'game is already finished. not advancing.'
+      exit 0
+    else
+      log.error "game is in unknown stage '#{game_data[:current_stage]}'."
+    end
+
+    if next_question_id
       next_question = game.col('questions').doc(next_question_id).get
       if next_question.exists?
         next_game_state.set(:active_question_id, next_question_id)
@@ -242,11 +250,6 @@ class WorstIdeaAdmin < Thor
         next_game_state.set(:active_question_max_answer_id, nil)
         next_game_state.set(:current_stage, GameState::FINISHED)
       end
-    when GameState::FINISHED then
-      log.info 'game is already finished. not advancing.'
-      exit 0
-    else
-      log.error "game is in unknown stage '#{game_data[:current_stage]}'."
     end
 
     # TODO: eliminate players
