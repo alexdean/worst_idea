@@ -11,6 +11,11 @@ Google::Cloud::Firestore.configure do |config|
 end
 
 class WorstIdeaAdmin < Thor
+  # game states
+  JOINING = 'joining'
+  IN_PROGRESS = 'in-progress'
+  FINISHED = 'finished'
+
   no_commands do
     def log
       @log ||= Logger.new($stdout)
@@ -43,7 +48,7 @@ class WorstIdeaAdmin < Thor
     game.delete
     game.set(
       title: ENV['TITLE'] || game_name,
-      current_stage: 'joining', # then 'in-progress', then 'finished'
+      current_stage: JOINING,
       leader_player_id: nil,
       active_question_id: nil,
       active_question_max_answer_id: nil,
@@ -59,7 +64,6 @@ class WorstIdeaAdmin < Thor
     template_data['questions'].each_with_index do |(question_text, answers), idx|
       question = questions.doc(idx)
       question.set(
-        sequence: idx,
         question: question_text,
         answers: answers,
         summary: {}
@@ -67,13 +71,175 @@ class WorstIdeaAdmin < Thor
     end
 
     log.info "created game '#{game_name}'"
-    `echo '#{game_name}' | pbcopy`
+    `printf '#{game_name}' | pbcopy`
   end
 
-  desc "summarizer NAME", "summarize and persist player answers."
-  def summarize(name)
+  desc "summarizer", "summarize and persist player answers."
+  method_option :game, type: :string, required: true, aliases: '-g'
+  def summarize
+    game_name = options[:game]
 
+    db = Google::Cloud::Firestore.new
+    game = db.doc("games/#{game_name}")
+
+    players = Set.new
+    players_mutex = Mutex.new
+
+    # listen for updates to the list of active players.
+    players_listener = game.col('players').listen do |snapshot|
+      players_mutex.synchronize do
+        players = Set.new
+
+        snapshot.docs.each do |doc|
+          data = doc.data
+          player_id = doc.document_id
+          players << player_id if doc[:is_active]
+        end
+      end
+      log.info "updated player list. #{players.inspect}"
+    end
+
+    log.info "players: #{players.to_a.inspect}"
+
+    game_data_mutex = Mutex.new
+    game_data = nil
+    game_listener = game.listen do |snapshot|
+      game_data_mutex.synchronize do
+        game_data = snapshot.data
+        log.info "new game data. #{game_data.inspect}"
+      end
+    end
+
+    summarizer = game.col('player_answers').listen do |snapshot|
+      active_question_id = nil
+      active_question_max_answer_id = nil
+
+      game_data_mutex.synchronize do
+        active_question_id = game_data[:active_question_id]
+        active_question_max_answer_id = game_data[:active_question_max_answer_id]
+      end
+
+      snapshot.docs.each do |player_doc|
+        summary = {}
+        player_id = player_doc.document_id
+        answer_id = player_doc.data[:answer]
+
+        log_context = "active_question_id:#{active_question_id}, player_id:#{player_id}, answer_id:#{answer_id}"
+
+        players_mutex.synchronize do
+          if !players.include?(player_id)
+            log.error "#{log_context} unknown or inactive player. players:#{players.inspect}"
+            next
+          end
+        end
+
+        if !answer_id.is_a?(Integer)
+          log.error "#{log_context} not an integer"
+          next
+        end
+
+        # validate that the answer id exists for this question
+        if answer_id < 0 || answer_id > active_question_max_answer_id
+          log.error "#{log_context} answer out of range"
+          next
+        end
+
+        summary[answer_id] ||= 0
+        summary[answer_id] += 1
+
+        db.transaction do
+          # update not set, to ensure that we remove outdated keys. (set with merge: true does not do this.)
+          game.col("questions").doc(question_id).update({summary: summary})
+          game.set({summary: summary}, {merge: true})
+        end
+        log.info "summarized question:#{question_id}, #{summary.inspect}"
+      end
+    end
+
+    trap("INT") do
+      @exit = 0
+    end
+
+    loop do
+      break if @exit
+      sleep 0.5
+    end
+
+    log.info 'exiting.'
+
+    summarizer.stop
+    players_listener.stop
+    game_listener.stop
   end
+
+  desc "next", "advance to the next game state"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  def next_state
+    game_name = options[:game]
+
+    db = Google::Cloud::Firestore.new
+    game = db.doc("games/#{game_name}")
+    game_data = game.get
+
+    case game_data[:current_stage]
+    when JOINING then
+      next_stage = IN_PROGRESS
+      next_question_id = 0
+    when IN_PROGRESS then
+      current_question_id = game_data[:active_question_id]
+      next_question_id = current_question_id + 1
+    when FINISHED then
+      log.info 'game is already finished. not advancing.'
+      exit 0
+    end
+
+    next_question = game.col('questions').doc(next_question_id).get
+    if next_question.exists?
+      next_question_max_answer_id = next_question[:answers].size - 1
+      next_stage = IN_PROGRESS
+    else
+      next_question_id = nil
+      next_question_max_answer_id = nil
+      next_stage = FINISHED
+    end
+
+    log.info "next_stage: #{next_stage}, next_question_id: #{next_question_id}, next_question_max_answer_id: #{next_question_max_answer_id}"
+    db.transaction do
+      game.set(
+        {
+          current_stage: next_stage,
+          active_question_id: next_question_id,
+          active_question_max_answer_id: next_question_max_answer_id,
+          summary: {}
+        },
+        merge: true
+      )
+      game.col('player_answers').get do |pa|
+        pa.delete
+      end
+    end
+
+    # questions.where('sequence', '=', 1).get.first.data
+    #=> {:question=>"what is?", :answers=>[1, 2, 3], :sequence=>1}
+  end
+
+  desc "current", "report current game state"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  def current_state
+    game_name = options[:game]
+
+    db = Google::Cloud::Firestore.new
+    game = db.doc("games/#{game_name}")
+    game_data = game.get
+
+    log.info "current_stage: #{game_data[:current_stage]}, active_question_id: #{game_data[:active_question_id]}," \
+      " active_question_max_answer_id: #{game_data[:active_question_max_answer_id]}"
+  end
+  # def add_player
+  # end
+
+  # def add_answer
+  # end
 end
 
 WorstIdeaAdmin.start
