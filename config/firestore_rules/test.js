@@ -118,11 +118,11 @@ describe("worst idea", () => {
         // alice selects answer 1 for question 2. set({2: 1})
         // maybe could be simpler if we used doc('alice').set({question_id: answer_id})
         // and https://firebase.google.com/docs/reference/rules/rules.Map.html
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 1})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer_id': 1})
       );
       // bob is inactive so he cannot.
       await firebase.assertFails(
-        bob.collection('games').doc('game').collection('player_answers').doc('bob').set({'answer': 1})
+        bob.collection('games').doc('game').collection('player_answers').doc('bob').set({'answer_id': 1})
       );
     });
 
@@ -131,14 +131,14 @@ describe("worst idea", () => {
 
       // question 2 has answers 0-2.
       await firebase.assertSucceeds(
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 2})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer_id': 2})
       );
       // can't add an answer that's out of range
       await firebase.assertFails(
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 5})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer_id': 5})
       );
       await firebase.assertFails(
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': -1})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer_id': -1})
       );
     });
 
@@ -146,7 +146,7 @@ describe("worst idea", () => {
       const alice = authedApp({uid: 'alice'});
 
       await firebase.assertFails(
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 'NaN'})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer_id': 'NaN'})
       );
     });
 
@@ -166,7 +166,7 @@ describe("worst idea", () => {
 
       const alice = authedApp({uid: 'alice'});
       await firebase.assertFails(
-        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer': 1})
+        alice.collection('games').doc('game').collection('player_answers').doc('alice').set({'answer_id': 1})
       );
     })
   });
