@@ -8,6 +8,7 @@ gem "bugsnag", "~> 6.12"
 gem 'google-cloud-firestore'
 gem 'puma', '~> 3.11'
 gem 'rails', '~> 6.0.0'
+gem 'random-word'
 gem 'thor'
 gem 'webpacker', '~> 4.0'
 
