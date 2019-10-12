@@ -26,7 +26,7 @@ service cloud.firestore {
 
         allow read, write: if request.auth.uid == uid
                               && playerDoc().data.is_active == true
-                              && gameDoc().data.current_stage == 'in-progress'
+                              && gameDoc().data.current_stage == 'question-open'
                               && request.resource.data.answer_id is int
                               && request.resource.data.answer_id <= gameDoc().data.active_question_max_answer_id
                               && request.resource.data.answer_id >= 0;

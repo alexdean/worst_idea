@@ -10,15 +10,58 @@ Google::Cloud::Firestore.configure do |config|
   config.credentials = $rails_root.join('firebase-admin-sdk-tkray-bad-ideas-106028a5b26f.json').to_s
 end
 
-class WorstIdeaAdmin < Thor
+# semantics:
+#   assigning something means it will be part of to_h, even if it's nil
+class GameState
+  VALID_KEYS = Set.new([:title, :current_stage, :leader_player_id, :active_question_id, :active_question_max_answer_id, :created_at, :summary])
+
   # game states
   JOINING = 'joining'
-  IN_PROGRESS = 'in-progress'
+  QUESTION_OPEN = 'question-open'
+  QUESTION_CLOSED = 'question-closed'
+  QUESTION_RESULTS = 'question-results'
   FINISHED = 'finished'
 
+  VALID_STAGES = Set.new([
+    JOINING,
+    QUESTION_OPEN,
+    QUESTION_CLOSED,
+    QUESTION_RESULTS,
+    FINISHED
+  ])
+
+  def initialize(data = {})
+    @data = {}
+    data.each do |key, value|
+      set(key, value)
+    end
+  end
+
+  def set(key, val)
+    raise ArgumentError, "#{key} is not a valid key." if !VALID_KEYS.include?(key)
+    if key == :current_stage && !VALID_STAGES.include?(val)
+      raise ArgumentError, "#{val} is not a valid value for #{key}."
+    end
+    @data[key] = val
+  end
+
+  def to_h
+    @data
+  end
+end
+
+class WorstIdeaAdmin < Thor
   no_commands do
     def log
       @log ||= Logger.new($stdout)
+    end
+
+    def db
+      @db ||= Google::Cloud::Firestore.new
+    end
+
+    def fetch_game(game_name)
+      db.doc("games/#{game_name}")
     end
   end
 
@@ -26,10 +69,9 @@ class WorstIdeaAdmin < Thor
   desc "init", "Create a new game from the given template."
   method_option :production, type: :boolean, default: false
   method_option :template, type: :boolean, default: 'test', aliases: '-t'
+  method_option :name, type: :string, aliases: '-n', desc: "nice name for the game"
   def init
     now = Time.now
-    db = Google::Cloud::Firestore.new
-
     if options[:production]
       game_name = 'current'
     else
@@ -43,17 +85,17 @@ class WorstIdeaAdmin < Thor
     end
     template_data = YAML.load_file(template_path)
 
-    games = db.col('games')
-    game = games.doc(game_name)
+    game = fetch_game(game_name)
     game.delete
-    game.set(
-      title: ENV['TITLE'] || game_name,
-      current_stage: JOINING,
+    next_state = GameState.new(
+      title: options[:name] || game_name,
+      current_stage: GameState::JOINING,
       leader_player_id: nil,
       active_question_id: nil,
       active_question_max_answer_id: nil,
       created_at: now
     )
+    game.set(next_state.to_h)
 
     questions = game.col('questions')
     # nothing in here initially. just FYI they exist.
@@ -77,10 +119,7 @@ class WorstIdeaAdmin < Thor
   desc "summarizer", "summarize and persist player answers."
   method_option :game, type: :string, required: true, aliases: '-g'
   def summarize
-    game_name = options[:game]
-
-    db = Google::Cloud::Firestore.new
-    game = db.doc("games/#{game_name}")
+    game = fetch_game(options[:game])
 
     players = Set.new
     players_mutex = Mutex.new
@@ -150,7 +189,7 @@ class WorstIdeaAdmin < Thor
         db.transaction do
           # update not set, to ensure that we remove outdated keys. (set with merge: true does not do this.)
           game.col("questions").doc(question_id).update({summary: summary})
-          game.set({summary: summary}, {merge: true})
+          game.set(GameState.new({summary: summary}).to_h, {merge: true})
         end
         log.info "summarized question:#{question_id}, #{summary.inspect}"
       end
@@ -176,42 +215,47 @@ class WorstIdeaAdmin < Thor
   method_option :game, type: :string, required: true, aliases: '-g'
   def next_state
     game_name = options[:game]
-
-    db = Google::Cloud::Firestore.new
-    game = db.doc("games/#{game_name}")
+    game = fetch_game(game_name)
     game_data = game.get
 
+    # TODO: struct for game state
+
+    next_game_state = GameState.new
     case game_data[:current_stage]
-    when JOINING then
-      next_stage = IN_PROGRESS
-      next_question_id = 0
-    when IN_PROGRESS then
+    when GameState::JOINING then
+      next_game_state.set(:current_stage, GameState::QUESTION_OPEN)
+      next_game_state.set(:active_question_id, 0)
+    when GameState::QUESTION_OPEN then
+      next_game_state.set(:current_stage, GameState::QUESTION_CLOSED)
+    when GameState::QUESTION_CLOSED then
+      next_game_state.set(:current_stage, GameState::QUESTION_RESULTS)
+    when GameState::QUESTION_RESULTS then
       current_question_id = game_data[:active_question_id]
       next_question_id = current_question_id + 1
-    when FINISHED then
+      next_question = game.col('questions').doc(next_question_id).get
+      if next_question.exists?
+        next_game_state.set(:active_question_id, next_question_id)
+        next_game_state.set(:active_question_max_answer_id, next_question[:answers].size - 1)
+        next_game_state.set(:current_stage, GameState::QUESTION_OPEN)
+      else
+        next_game_state.set(:active_question_id, nil)
+        next_game_state.set(:active_question_max_answer_id, nil)
+        next_game_state.set(:current_stage, GameState::FINISHED)
+      end
+    when GameState::FINISHED then
       log.info 'game is already finished. not advancing.'
       exit 0
-    end
-
-    next_question = game.col('questions').doc(next_question_id).get
-    if next_question.exists?
-      next_question_max_answer_id = next_question[:answers].size - 1
-      next_stage = IN_PROGRESS
     else
-      next_question_id = nil
-      next_question_max_answer_id = nil
-      next_stage = FINISHED
+      log.error "game is in unknown stage '#{game_data[:current_stage]}'."
     end
 
-    log.info "next_stage: #{next_stage}, next_question_id: #{next_question_id}, next_question_max_answer_id: #{next_question_max_answer_id}"
+    # TODO: eliminate players
+    next_game_state.set(:summary, {})
+
+    log.info next_game_state.inspect
     db.transaction do
       game.set(
-        {
-          current_stage: next_stage,
-          active_question_id: next_question_id,
-          active_question_max_answer_id: next_question_max_answer_id,
-          summary: {}
-        },
+        next_game_state.to_h,
         merge: true
       )
       game.col('player_answers').get do |pa|
@@ -226,11 +270,7 @@ class WorstIdeaAdmin < Thor
   desc "current", "report current game state"
   method_option :game, type: :string, required: true, aliases: '-g'
   def current_state
-    game_name = options[:game]
-
-    db = Google::Cloud::Firestore.new
-    game = db.doc("games/#{game_name}")
-    game_data = game.get
+    game_data = fetch_game(options[:game]).get
 
     log.info "current_stage: #{game_data[:current_stage]}, active_question_id: #{game_data[:active_question_id]}," \
       " active_question_max_answer_id: #{game_data[:active_question_max_answer_id]}"
