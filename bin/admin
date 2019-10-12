@@ -1,0 +1,65 @@
+#!/usr/bin/env ruby
+require "google/cloud/firestore"
+require "logger"
+require "pathname"
+require "thor"
+
+$rails_root = Pathname.new(File.expand_path('../..', __FILE__))
+Google::Cloud::Firestore.configure do |config|
+  config.credentials = $rails_root.join('firebase-admin-sdk-tkray-bad-ideas-106028a5b26f.json').to_s
+end
+
+class WorstIdeaAdmin < Thor
+  no_commands do
+    def log
+      @log ||= Logger.new($stdout)
+    end
+  end
+
+  desc "init TEMPLATE TITLE NAME", "Create a new game from the given template."
+  def init(template_name, title, name)
+    client = Google::Cloud::Firestore.new
+
+    template_path = $rails_root.join("config/game_templates/#{template_name}.yml")
+    if !File.exist?(template_path)
+      log.error("#{template_path} does not exist.")
+      exit 1
+    end
+    template_data = YAML.load_file(template_path)
+
+    now = Time.now
+    game_name = !name.nil? ? "#{now.strftime('%Y%m%d')}-#{template_name}-#{name.gsub(/[^0-9a-zA-Z]/, '')}" : 'current'
+
+    games = client.col('games')
+    game = games.doc(game_name)
+    game.delete
+    game.set(
+      title: ENV['TITLE'] || game_name,
+      current_stage: 'joining', # then 'in-progress', then 'finished'
+      leader_player_id: nil,
+      active_question_id: nil,
+      active_question_max_answer_id: nil,
+      created_at: now
+    )
+
+    questions = game.col('questions')
+    # nothing in here initially. just FYI they exist.
+    # answers for the current question only. (erased after each question is fully summarized.)
+    player_answers = game.col('player_answers')
+    players = game.col('players')
+
+    template_data['questions'].each_with_index do |(question_text, answers), idx|
+      question = questions.doc(idx)
+      question.set(
+        sequence: idx,
+        question: question_text,
+        answers: answers,
+        summary: {}
+      )
+    end
+
+    log.info "created game '#{game_name}'"
+  end
+end
+
+WorstIdeaAdmin.start

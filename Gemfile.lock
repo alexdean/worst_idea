@@ -240,6 +240,7 @@ DEPENDENCIES
   rspec-rails
   spring
   spring-watcher-listen (~> 2.0.0)
+  thor
   web-console (>= 3.3.0)
   webpacker (~> 4.0)
 
