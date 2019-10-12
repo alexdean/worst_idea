@@ -76,15 +76,21 @@ const Player = () => {
   if (user) {
     return (
       <div className="m-10">
-        <div>Current User: {user.uid}</div>
+        <div className="text-xs">Current User: {user.uid}</div>
         <div className="p-2 bg-blue-100">
           {questionsLoading && <div className="">Loading</div>}
           {questionsError && <div className="">{JSON.stringify(error)}</div>}
           {questionsValue &&
             questionsValue.docs.map((doc, i) => {
+              let answers = doc.data().answers;
               return (
-                <div key={i} className="">
-                  {doc.data().question}
+                <div key={i} className="my-3">
+                  <div className="font-bold">{doc.data().question}</div>
+                  <div className="text-sm">
+                    {answers.map((answer, i) => {
+                      return <div className="">{answer}</div>;
+                    })}
+                  </div>
                 </div>
               );
             })}
