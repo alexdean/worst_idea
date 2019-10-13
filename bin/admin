@@ -13,9 +13,11 @@ Google::Cloud::Firestore.configure do |config|
 end
 
 class WorstIdeaAdmin < Thor
+  include Thor::Actions
+
   no_commands do
     def log
-      @log ||= Logger.new($stdout)
+      @log ||= Logger.new($stdout, level: Logger::DEBUG)
     end
 
     def db
@@ -173,6 +175,114 @@ class WorstIdeaAdmin < Thor
     game_listener.stop
   end
 
+  desc "crown", "select the next Emperor of Bad Ideas"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  def crown
+    game_name = options[:game]
+    game = fetch_game(game_name)
+
+    crown_randomly(game)
+  end
+
+  no_commands do
+    def crown_randomly(game)
+      players = game.collection('players').where('is_active', '==', true).get.to_a
+      max_idx = players.size
+      emperor_idx = rand(max_idx)
+
+      next_emperor = players[emperor_idx]
+      log.info "selected #{next_emperor.data[:name]} as Emperor."
+      game.update(leader_player_id: next_emperor.document_id)
+    end
+
+    def crown_by_shortcode
+    end
+  end
+
+  # TODO: add "eliminate_agreers" and "eliminate_disagreers", and add option to game
+  #   to decide which to use.
+  desc "eliminate", "eliminate players"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  method_option :who, type: :string, required: true, aliases: '-w', enum: ['agree', 'disagree'], desc: "eliminate those who :agree or :disagree?"
+  def eliminate_players
+    game_name = options[:game]
+    game = fetch_game(game_name)
+    game_data = game.get
+    emperor_id = game_data[:leader_player_id]
+
+    if emperor_id.nil?
+      log.error "game has no Emperor. cannot calculate results."
+      exit 1
+    end
+
+    emperor = game.collection('players').doc(emperor_id).get
+    log.info "emperor is '#{emperor[:name]}' (#{emperor_id})."
+
+    # find the answer given by the emperor
+    emperors_answer = game.collection('player_answers').doc(emperor_id).get
+    if !emperors_answer.exists?
+      log.error "Emperor did not choose an answer. cannot calculate results."
+      exit 1
+    end
+    if !emperors_answer[:answer_id]
+      log.error "Emperor's answer does not have an answer_id. emperors_answer=#{emperors_answer.inspect}"
+    end
+    active_question = game.collection('questions').doc(game_data[:active_question_id]).get
+    if !active_question.exists?
+      log.error "cannot find the active question. game_data[:active_question_id]=#{game_data[:active_question_id]}."
+      exit 1
+    end
+    log.info "active question: #{active_question[:question]}"
+    emperors_answer_details = active_question[:answers][emperors_answer[:answer_id]]
+    log.info "Emperor selected '#{emperors_answer_details}'."
+    log.info "we will eliminate those who #{options[:who]} with the Emperor."
+
+    if !yes?("Should we continue? (Any answer but 'yes' will exit.)")
+      log.info 'Exiting.'
+      exit 0
+    end
+
+    player_answers = {}
+    game.collection('player_answers').get.each do |player_answer|
+      player_answers[player_answer.document_id.strip] = player_answer[:answer_id]
+    end
+
+    log.debug "player_answers: #{player_answers.inspect}"
+    eliminated = []
+    still_active = []
+    game.collection('players').where('is_active', '==', true).get.each do |player_snapshot|
+      player_id = player_snapshot.document_id.strip
+      player_answer_id = player_answers[player_id]
+
+      eliminate = false
+
+      log.debug "player_answer_id=#{player_answer_id}" \
+        " emperors_answer[:answer_id]=#{emperors_answer[:answer_id]}"
+
+      # eliminates players who didn't provide an answer
+      if !player_answer_id
+        log.debug "'#{player_snapshot[:name]}' (#{player_id}) did not provide an answer."
+        eliminate = true
+      elsif options[:who] == 'agree' && player_answer_id == emperors_answer[:answer_id]
+        log.debug "'#{player_snapshot[:name]}' (#{player_id}) agreed with the Emperor."
+        eliminate = true
+      elsif options[:who] == 'disagree' && player_answer_id != emperors_answer[:answer_id]
+        log.debug "'#{player_snapshot[:name]}' (#{player_id}) disagreed with the Emperor."
+        eliminate = true
+      end
+
+      if eliminate
+        eliminated << player_snapshot[:name]
+        player_snapshot.reference.update({is_active: false})
+      else
+        still_active << player_snapshot[:name]
+      end
+    end
+
+    log.info "eliminated #{eliminated.size} players. #{eliminated.inspect}"
+    log.info "#{still_active.size} players remain. #{still_active.inspect}"
+  end
+
   desc "next", "advance to the next game state"
   method_option :game, type: :string, required: true, aliases: '-g'
   def next_state
@@ -184,12 +294,19 @@ class WorstIdeaAdmin < Thor
 
     next_game_state = GameState.new
     next_question_id = nil
+    clear_player_answers = false
     case game_data[:current_stage]
     when GameState::JOINING then
       next_question_id = 0
     when GameState::QUESTION_OPEN then
       next_game_state.set(:current_stage, GameState::QUESTION_CLOSED)
     when GameState::QUESTION_CLOSED then
+      if game_data[:leader_player_id].nil?
+        log.error "game has no Emperor. cannot calculate results without one."
+        exit 1
+      else
+        eliminate_players(game)
+      end
       next_game_state.set(:current_stage, GameState::QUESTION_RESULTS)
     when GameState::QUESTION_RESULTS then
       current_question_id = game_data[:active_question_id]
@@ -207,6 +324,7 @@ class WorstIdeaAdmin < Thor
         next_game_state.set(:active_question_id, next_question_id)
         next_game_state.set(:active_question_max_answer_id, next_question[:answers].size - 1)
         next_game_state.set(:current_stage, GameState::QUESTION_OPEN)
+        clear_player_answers = true
       else
         next_game_state.set(:active_question_id, nil)
         next_game_state.set(:active_question_max_answer_id, nil)
@@ -223,8 +341,10 @@ class WorstIdeaAdmin < Thor
         next_game_state.to_h,
         merge: true
       )
-      game.col('player_answers').get do |pa|
-        pa.delete
+      if clear_player_answers
+        game.col('player_answers').get do |snapshot|
+          snapshot.reference.delete
+        end
       end
     end
 
@@ -240,11 +360,6 @@ class WorstIdeaAdmin < Thor
     log.info "current_stage: #{game_data[:current_stage]}, active_question_id: #{game_data[:active_question_id]}," \
       " active_question_max_answer_id: #{game_data[:active_question_max_answer_id]}"
   end
-  # def add_player
-  # end
-
-  # def add_answer
-  # end
 end
 
 WorstIdeaAdmin.start
