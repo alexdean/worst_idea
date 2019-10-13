@@ -22,6 +22,60 @@ An interactive game for live groups.
   * Some backend processes implemented in ruby. Example: Building summaries of
     answer counts during voting.
 
+## Game Flow
+
+This is an outline of the stages of the game, and what should happen in each of them.
+
+Once a game is created `bin/admin next -g <game-name>` will progress the game
+to the next stage.
+
+### To create a game
+
+`bin/admin init` to generate a new game
+`bin/admin init --production` to reset the state of the `current` game.
+
+this will destroy any existing data in the named game.
+
+the generated game will be in the `joining` stage once is it created.
+
+### 1. joining
+
+Players can join the game (by adding themselves to the `players` collection).
+
+### 2. preparing
+
+  * Players can no longer join the game.
+  * Short codes are generated for each player.
+
+An emperor can be selected using `bin/admin crown`.
+
+### 3. question-open
+
+  * Players can select an answer to the displayed question.
+  * The `game.summary` property will live-update with a summary of how many players
+    have selected each answer.
+  * The `game.questions(id).summary` property will live-update with the same data.
+
+### 4. question-closed
+
+  * Players can no longer select an answer or change their answer.
+  * An emperor must be selected before moving past this stage.
+
+`bin/admin eliminate` should be used here to eliminate players based on their answers.
+
+### 5. question-results
+
+  * The live screen should now show some summary of how many players were eliminated
+    and how many remain.
+  * `bin/admin crown` should be used to select a new Emperor if desired.
+
+`bin/admin next` will move the game either to the next `question-open`, or to `finished`
+if this was the last question.
+
+### 6. finished
+
+The game is over.
+
 ## Develoment
 
 To build & test security rules:
