@@ -101,11 +101,15 @@ const Player = () => {
   useEffect(() => {
     if (gameValue) {
       // Update the current question id
+      let qid = currentQuestionId;
       console.log("question id: ", gameValue.data().active_question_id);
       setCurrentQuestionId(gameValue.data().active_question_id);
       setStage(gameValue.data().current_stage);
       setLeaderId(gameValue.data().leader_player_id);
-      setSelectedAnswer(null);
+      // If the current question changed, then reset the player's selected answer
+      if (qid != gameValue.data().active_question_id) {
+        setSelectedAnswer(null);
+      }
     }
   }, [gameValue]);
 
@@ -123,8 +127,19 @@ const Player = () => {
   }, [questionsValue]);
 
   const onAnswerSelect = e => {
-    // console.log(e.target.attributes["data-value"].value);
-    setSelectedAnswer(e.target.attributes["data-value"].value);
+    let answerIndex = parseInt(e.target.attributes["data-value"].value);
+    console.log("Clicked: ", answerIndex, user.uid);
+    if (stage === "question-open") {
+      setSelectedAnswer(answerIndex);
+      return db
+        .collection("games")
+        .doc(gameId)
+        .collection("player_answers")
+        .doc(user.uid)
+        .set({ answer_id: answerIndex });
+    } else {
+      return false;
+    }
   };
 
   // If auth'd...
@@ -140,7 +155,7 @@ const Player = () => {
               <div className="">
                 {questions[currentQuestionId].answers.map((answer, i) => {
                   return (
-                    <div className="my-4">
+                    <div className="my-4" key={i}>
                       <div
                         key={i}
                         onClick={e => onAnswerSelect(e)}
@@ -154,6 +169,11 @@ const Player = () => {
                     </div>
                   );
                 })}
+              </div>
+              <div className="text-center">
+                {stage === "question-closed" && (
+                  <div className="">Answers are now locked in</div>
+                )}
               </div>
             </div>
           )}
