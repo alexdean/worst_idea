@@ -237,19 +237,15 @@ class WorstIdeaAdmin < Thor
     log.info "Emperor selected '#{emperors_answer_details}'."
     log.info "we will eliminate those who #{options[:who]} with the Emperor."
 
-    if !yes?("Should we continue? (Any answer but 'yes' will exit.)")
-      log.info 'Exiting.'
-      exit 0
-    end
-
     player_answers = {}
     game.collection('player_answers').get.each do |player_answer|
       player_answers[player_answer.document_id.strip] = player_answer[:answer_id]
     end
 
     log.debug "player_answers: #{player_answers.inspect}"
-    eliminated = []
-    still_active = []
+    to_eliminate = []
+    still_active = 0
+
     game.collection('players').where('is_active', '==', true).get.each do |player_snapshot|
       player_id = player_snapshot.document_id.strip
       player_answer_id = player_answers[player_id]
@@ -259,28 +255,41 @@ class WorstIdeaAdmin < Thor
       log.debug "player_answer_id=#{player_answer_id}" \
         " emperors_answer[:answer_id]=#{emperors_answer[:answer_id]}"
 
-      # eliminates players who didn't provide an answer
       if !player_answer_id
-        log.debug "'#{player_snapshot[:name]}' (#{player_id}) did not provide an answer."
+        log.debug "'#{player_snapshot[:name]}' (#{player_id}) will be eliminated for not providing an answer."
         eliminate = true
-      elsif options[:who] == 'agree' && player_answer_id == emperors_answer[:answer_id]
-        log.debug "'#{player_snapshot[:name]}' (#{player_id}) agreed with the Emperor."
+      elsif options[:who] == 'agree' && player_answer_id == emperors_answer[:answer_id] && player_id != emperor_id
+        log.debug "'#{player_snapshot[:name]}' (#{player_id}) will be eliminated for agreeing with the Emperor."
         eliminate = true
       elsif options[:who] == 'disagree' && player_answer_id != emperors_answer[:answer_id]
-        log.debug "'#{player_snapshot[:name]}' (#{player_id}) disagreed with the Emperor."
+        log.debug "'#{player_snapshot[:name]}' (#{player_id}) will be eliminated for disagreeing with the Emperor."
         eliminate = true
       end
 
       if eliminate
-        eliminated << player_snapshot[:name]
-        player_snapshot.reference.update({is_active: false})
+        to_eliminate << player_snapshot.reference
       else
-        still_active << player_snapshot[:name]
+        still_active += 1
       end
     end
 
-    log.info "eliminated #{eliminated.size} players. #{eliminated.inspect}"
-    log.info "#{still_active.size} players remain. #{still_active.inspect}"
+    # don't count the Emperor as 'still active'.
+    still_active -= 1
+
+    log.info "about to eliminate #{to_eliminate.size} players, which will leave #{still_active} players remaining."
+    if !yes?("Should we continue? (Any answer but 'yes' will exit.)")
+      log.info 'Exiting.'
+      exit 0
+    end
+
+    db.transaction do
+      to_eliminate.each do |player_reference|
+        player_reference.update({is_active: false})
+      end
+    end
+
+    log.info "eliminated #{to_eliminate.size} players."
+    log.info "#{still_active} players remain (plus the current Emperor)."
   end
 
   desc "next", "advance to the next game state"
