@@ -1,53 +1,15 @@
 #!/usr/bin/env ruby
+require_relative '../lib/game_state'
 require "google/cloud/firestore"
 require "logger"
 require "pathname"
 require "random-word"
+require "securerandom"
 require "thor"
 
 $rails_root = Pathname.new(File.expand_path('../..', __FILE__))
 Google::Cloud::Firestore.configure do |config|
   config.credentials = $rails_root.join('firebase-admin-sdk-tkray-bad-ideas-106028a5b26f.json').to_s
-end
-
-# semantics:
-#   assigning something means it will be part of to_h, even if it's nil
-class GameState
-  VALID_KEYS = Set.new([:title, :current_stage, :leader_player_id, :active_question_id, :active_question_max_answer_id, :created_at, :summary])
-
-  # game states
-  JOINING = 'joining'
-  QUESTION_OPEN = 'question-open'
-  QUESTION_CLOSED = 'question-closed'
-  QUESTION_RESULTS = 'question-results'
-  FINISHED = 'finished'
-
-  VALID_STAGES = Set.new([
-    JOINING,
-    QUESTION_OPEN,
-    QUESTION_CLOSED,
-    QUESTION_RESULTS,
-    FINISHED
-  ])
-
-  def initialize(data = {})
-    @data = {}
-    data.each do |key, value|
-      set(key, value)
-    end
-  end
-
-  def set(key, val)
-    raise ArgumentError, "#{key} is not a valid key." if !VALID_KEYS.include?(key)
-    if key == :current_stage && !VALID_STAGES.include?(val)
-      raise ArgumentError, "#{val} is not a valid value for #{key}."
-    end
-    @data[key] = val
-  end
-
-  def to_h
-    @data
-  end
 end
 
 class WorstIdeaAdmin < Thor
