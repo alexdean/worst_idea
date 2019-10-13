@@ -126,8 +126,9 @@ const Player = () => {
       setQuestions(questionsValue.docs.map((question, i) => question.data()));
   }, [questionsValue]);
 
-  const onAnswerSelect = e => {
-    let answerIndex = parseInt(e.target.attributes["data-value"].value);
+  const onAnswerSelect = (e, i) => {
+    // let answerIndex = parseInt(e.target.attributes["data-value"].value);
+    let answerIndex = i;
     console.log("Clicked: ", answerIndex, user.uid);
     if (stage === "question-open") {
       setSelectedAnswer(answerIndex);
@@ -157,14 +158,22 @@ const Player = () => {
                   return (
                     <div className="my-4" key={i}>
                       <div
-                        key={i}
-                        onClick={e => onAnswerSelect(e)}
-                        data-value={i}
-                        className={`answer rounded-full p-3 inline-block w-full text-center ${
-                          selectedAnswer == i ? "bg-indigo-700" : "bg-gray-800"
+                        onClick={e => onAnswerSelect(e, i)}
+                        // data-value={i}
+                        className={`answer text-lg rounded-full inline-block w-full overflow-hidden text-center ${
+                          selectedAnswer == i ? "bg-red-600" : "bg-gray-800"
                         }`}
                       >
-                        {answer}
+                        <div
+                          className="p-3"
+                          style={{
+                            // mixBlendMode: "multiply",
+                            backgroundImage:
+                              "linear-gradient(90deg, rgba(246,246,246,.2) 0%, rgba(246,246,246,.2) 55%, rgba(246,246,246,0) 55%)"
+                          }}
+                        >
+                          {answer}
+                        </div>
                       </div>
                     </div>
                   );
@@ -190,7 +199,7 @@ const Player = () => {
               )}
             </div>
             <div className="">
-              <button className="text-indigo-500" onClick={logout}>
+              <button className="text-gray-700" onClick={logout}>
                 Log out
               </button>
             </div>
