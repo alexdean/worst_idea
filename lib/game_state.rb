@@ -16,6 +16,7 @@ class GameState
 
   # game states
   JOINING = 'joining'
+  PREPARING = 'preparing'
   QUESTION_OPEN = 'question-open'
   QUESTION_CLOSED = 'question-closed'
   QUESTION_RESULTS = 'question-results'
