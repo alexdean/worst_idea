@@ -1,8 +1,10 @@
 #!/usr/bin/env ruby
+require_relative '../lib/game_state'
 require "google/cloud/firestore"
 require "logger"
 require "pathname"
 require "random-word"
+require "securerandom"
 require "thor"
 
 $rails_root = Pathname.new(File.expand_path('../..', __FILE__))
@@ -10,50 +12,12 @@ Google::Cloud::Firestore.configure do |config|
   config.credentials = $rails_root.join('firebase-admin-sdk-tkray-bad-ideas-106028a5b26f.json').to_s
 end
 
-# semantics:
-#   assigning something means it will be part of to_h, even if it's nil
-class GameState
-  VALID_KEYS = Set.new([:title, :current_stage, :leader_player_id, :active_question_id, :active_question_max_answer_id, :created_at, :summary])
-
-  # game states
-  JOINING = 'joining'
-  QUESTION_OPEN = 'question-open'
-  QUESTION_CLOSED = 'question-closed'
-  QUESTION_RESULTS = 'question-results'
-  FINISHED = 'finished'
-
-  VALID_STAGES = Set.new([
-    JOINING,
-    QUESTION_OPEN,
-    QUESTION_CLOSED,
-    QUESTION_RESULTS,
-    FINISHED
-  ])
-
-  def initialize(data = {})
-    @data = {}
-    data.each do |key, value|
-      set(key, value)
-    end
-  end
-
-  def set(key, val)
-    raise ArgumentError, "#{key} is not a valid key." if !VALID_KEYS.include?(key)
-    if key == :current_stage && !VALID_STAGES.include?(val)
-      raise ArgumentError, "#{val} is not a valid value for #{key}."
-    end
-    @data[key] = val
-  end
-
-  def to_h
-    @data
-  end
-end
-
 class WorstIdeaAdmin < Thor
+  include Thor::Actions
+
   no_commands do
     def log
-      @log ||= Logger.new($stdout)
+      @log ||= Logger.new($stdout, level: Logger::DEBUG)
     end
 
     def db
@@ -211,6 +175,201 @@ class WorstIdeaAdmin < Thor
     game_listener.stop
   end
 
+  desc "crown", "select the next Emperor of Bad Ideas"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  method_option :via, type: :string, required: true, enum: ['random', 'code'], aliases: '-v'
+  def crown
+    game_name = options[:game]
+    game = fetch_game(game_name)
+
+    case options[:via]
+    when 'random' then
+      next_emperor = crown_randomly(game)
+    when 'code' then
+      next_emperor = crown_by_shortcode(game)
+    else
+      log.error "unknown --via option #{options[:via]}"
+      exit 1
+    end
+
+    log.info "about to crown '#{next_emperor[:name]}' (#{next_emperor.document_id})."
+    if !yes?("Enter 'yes' to confirm. (Any other entry exits.)")
+      log.info "exiting."
+      exit 0
+    end
+
+    # should only ever be 1, but we'll do it this way just for safety.
+    # users have write access to their player document when they join the game, so they
+    # might manage to do something silly.
+    current_emperors = game.collection('players').where('is_leader', '==', true).get
+
+    db.transaction do
+      game.update(leader_player_id: next_emperor.document_id)
+      current_emperors.each do |current_emperor_snapshot|
+        log.info "dethroning #{current_emperor_snapshot[:name]}"
+        current_emperor_snapshot.reference.update({is_leader: false})
+      end
+      next_emperor.reference.update({is_leader: true})
+    end
+
+    log.info "A new Emperor has been crowned!"
+  end
+
+  no_commands do
+    def crown_randomly(game)
+      players = game.collection('players').where('is_active', '==', true).get.to_a
+      max_idx = players.size
+      emperor_idx = rand(max_idx)
+
+      next_emperor = players[emperor_idx]
+      log.info "selected #{next_emperor.data[:name]} as Emperor."
+      next_emperor
+    end
+
+    def crown_by_shortcode(game)
+      code = ask("Enter the short code for the next Emperor:")
+
+      candidates = game.collection('players').where('short_code', '==', code).get.to_a
+
+      if candidates.size == 0
+        log.error "no player has short code #{code}."
+        exit 1
+      elsif candidates.size > 1
+        log.error "code #{code} is not unique. #{candidates.inspect}"
+        exit 1
+      end
+
+      candidates[0]
+    end
+
+    def assign_short_codes(game)
+      game_data = game.get
+      if game_data[:current_stage] == GameState::JOINING
+        log.error "cannot assign codes while in 'joining' stage. users have write access to their data now."
+        exit 1
+      end
+      game.collection('players').get.each do |player_snapshot|
+        player_snapshot.reference.set({short_code: unique_short_code}, merge: true)
+      end
+    end
+
+    def unique_short_code
+      @used ||= Set.new
+
+      candidate = nil
+      loop do
+        candidate = (0...4).map { (65 + rand(26)).chr }.join
+        if !@used.include?(candidate)
+          @used << candidate
+          break
+        end
+      end
+
+      candidate
+    end
+  end
+
+  desc "assign-codes", "generate unique short codes for all players"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  def assign_codes
+    game_name = options[:game]
+    game = fetch_game(game_name)
+    assign_short_codes(game)
+  end
+
+  # TODO: add "eliminate_agreers" and "eliminate_disagreers", and add option to game
+  #   to decide which to use.
+  desc "eliminate", "eliminate players"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  method_option :who, type: :string, required: true, aliases: '-w', enum: ['agree', 'disagree'], desc: "eliminate those who :agree or :disagree?"
+  def eliminate_players
+    game_name = options[:game]
+    game = fetch_game(game_name)
+    game_data = game.get
+    emperor_id = game_data[:leader_player_id]
+
+    if emperor_id.nil?
+      log.error "game has no Emperor. cannot calculate results."
+      exit 1
+    end
+
+    emperor = game.collection('players').doc(emperor_id).get
+    log.info "emperor is '#{emperor[:name]}' (#{emperor_id})."
+
+    # find the answer given by the emperor
+    emperors_answer = game.collection('player_answers').doc(emperor_id).get
+    if !emperors_answer.exists?
+      log.error "Emperor did not choose an answer. cannot calculate results."
+      exit 1
+    end
+    if !emperors_answer[:answer_id]
+      log.error "Emperor's answer does not have an answer_id. emperors_answer=#{emperors_answer.inspect}"
+    end
+    active_question = game.collection('questions').doc(game_data[:active_question_id]).get
+    if !active_question.exists?
+      log.error "cannot find the active question. game_data[:active_question_id]=#{game_data[:active_question_id]}."
+      exit 1
+    end
+    log.info "active question: #{active_question[:question]}"
+    emperors_answer_details = active_question[:answers][emperors_answer[:answer_id]]
+    log.info "Emperor selected '#{emperors_answer_details}'."
+    log.info "we will eliminate those who #{options[:who]} with the Emperor."
+
+    player_answers = {}
+    game.collection('player_answers').get.each do |player_answer|
+      player_answers[player_answer.document_id.strip] = player_answer[:answer_id]
+    end
+
+    log.debug "player_answers: #{player_answers.inspect}"
+    to_eliminate = []
+    still_active = 0
+
+    game.collection('players').where('is_active', '==', true).get.each do |player_snapshot|
+      player_id = player_snapshot.document_id.strip
+      player_answer_id = player_answers[player_id]
+
+      eliminate = false
+
+      log.debug "player_answer_id=#{player_answer_id}" \
+        " emperors_answer[:answer_id]=#{emperors_answer[:answer_id]}"
+
+      if !player_answer_id
+        log.debug "'#{player_snapshot[:name]}' (#{player_id}) will be eliminated for not providing an answer."
+        eliminate = true
+      elsif options[:who] == 'agree' && player_answer_id == emperors_answer[:answer_id] && player_id != emperor_id
+        log.debug "'#{player_snapshot[:name]}' (#{player_id}) will be eliminated for agreeing with the Emperor."
+        eliminate = true
+      elsif options[:who] == 'disagree' && player_answer_id != emperors_answer[:answer_id]
+        log.debug "'#{player_snapshot[:name]}' (#{player_id}) will be eliminated for disagreeing with the Emperor."
+        eliminate = true
+      end
+
+      if eliminate
+        to_eliminate << player_snapshot.reference
+      else
+        still_active += 1
+      end
+    end
+
+    # don't count the Emperor as 'still active'.
+    still_active -= 1
+
+    log.info "about to eliminate #{to_eliminate.size} players, which will leave #{still_active} players remaining."
+    if !yes?("Should we continue? (Any answer but 'yes' will exit.)")
+      log.info 'Exiting.'
+      exit 0
+    end
+
+    db.transaction do
+      to_eliminate.each do |player_reference|
+        player_reference.update({is_active: false})
+      end
+    end
+
+    log.info "eliminated #{to_eliminate.size} players."
+    log.info "#{still_active} players remain (plus the current Emperor)."
+  end
+
   desc "next", "advance to the next game state"
   method_option :game, type: :string, required: true, aliases: '-g'
   def next_state
@@ -222,12 +381,21 @@ class WorstIdeaAdmin < Thor
 
     next_game_state = GameState.new
     next_question_id = nil
+    clear_player_answers = false
     case game_data[:current_stage]
     when GameState::JOINING then
+      next_game_state.set(:current_stage, GameState::PREPARING)
+    when GameState::PREPARING then
       next_question_id = 0
     when GameState::QUESTION_OPEN then
       next_game_state.set(:current_stage, GameState::QUESTION_CLOSED)
     when GameState::QUESTION_CLOSED then
+      if game_data[:leader_player_id].nil?
+        log.error "game has no Emperor. cannot calculate results without one."
+        exit 1
+      else
+        eliminate_players(game)
+      end
       next_game_state.set(:current_stage, GameState::QUESTION_RESULTS)
     when GameState::QUESTION_RESULTS then
       current_question_id = game_data[:active_question_id]
@@ -245,6 +413,7 @@ class WorstIdeaAdmin < Thor
         next_game_state.set(:active_question_id, next_question_id)
         next_game_state.set(:active_question_max_answer_id, next_question[:answers].size - 1)
         next_game_state.set(:current_stage, GameState::QUESTION_OPEN)
+        clear_player_answers = true
       else
         next_game_state.set(:active_question_id, nil)
         next_game_state.set(:active_question_max_answer_id, nil)
@@ -256,14 +425,26 @@ class WorstIdeaAdmin < Thor
     next_game_state.set(:summary, {})
 
     log.info next_game_state.inspect
+    next_game_state_data = next_game_state.to_h
     db.transaction do
       game.set(
-        next_game_state.to_h,
+        next_game_state_data,
         merge: true
       )
-      game.col('player_answers').get do |pa|
-        pa.delete
+      if clear_player_answers
+        game.col('player_answers').get do |snapshot|
+          snapshot.reference.delete
+        end
       end
+    end
+
+    # change name since we've successfully committed a change.
+    current_game_state_data = next_game_state_data
+
+    # actions to take once state has changed.
+    if current_game_state_data[:current_stage] == GameState::PREPARING
+      log.info "generating short codes for all players."
+      generate_short_codes(game)
     end
 
     # questions.where('sequence', '=', 1).get.first.data
@@ -278,11 +459,6 @@ class WorstIdeaAdmin < Thor
     log.info "current_stage: #{game_data[:current_stage]}, active_question_id: #{game_data[:active_question_id]}," \
       " active_question_max_answer_id: #{game_data[:active_question_max_answer_id]}"
   end
-  # def add_player
-  # end
-
-  # def add_answer
-  # end
 end
 
 WorstIdeaAdmin.start
