@@ -15,8 +15,7 @@ service cloud.firestore {
       // authenticated players can join a joinable game
       // game stages: joining, in-progress, finished
       match /players/{uid} {
-        allow read, write: if request.auth.uid == uid
-                              && gameDoc().data.current_stage == 'joining';
+        allow read, write: if request.auth.uid == uid;
       }
 
       match /player_answers/{uid} {
