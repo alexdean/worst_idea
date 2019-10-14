@@ -118,7 +118,7 @@ const Player = () => {
       if (qid != gameValue.data().active_question_id) {
         setSelectedAnswer(null);
       }
-      summarize(gameValue.data().summary);
+      gameValue.data().summary && summarize(gameValue.data().summary);
     }
   }, [gameValue]);
 
@@ -219,9 +219,11 @@ const Player = () => {
                     let count = gameValue.data().summary[i]
                       ? gameValue.data().summary[i]
                       : 0;
-                    let percentage = Math.floor((count / summary.total) * 100);
+                    let percentage = Math.floor(
+                      (count / summary.totalAnswerCount) * 100
+                    );
                     console.log("count", count);
-                    console.log(summary.total);
+                    console.log(summary.totalAnswerCount);
                     return (
                       <div className="my-4" key={i}>
                         <div
@@ -260,7 +262,17 @@ const Player = () => {
             <div className="">
               {playerValue && (
                 <div className="">
+                  <div className="">
+                    {gameValue &&
+                      gameValue.data().leader_player_id === user.uid && (
+                        <div className="">👑</div>
+                      )}
+                  </div>
                   <div className="font-bold">{playerValue.data().name}</div>
+                  <div className="">
+                    {playerValue.data().short_code &&
+                      playerValue.data().short_code}
+                  </div>
                   <div className="text-sm">
                     {!playerIsActive && "Damn. You're out of the game 😕"}
                   </div>
