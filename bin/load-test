@@ -1,0 +1,113 @@
+#!/usr/bin/env ruby
+require_relative '../lib/game_state'
+require "google/cloud/firestore"
+require "logger"
+require "pathname"
+require "random-word"
+require "securerandom"
+require "thor"
+
+$rails_root = Pathname.new(File.expand_path('../..', __FILE__))
+Google::Cloud::Firestore.configure do |config|
+  config.credentials = $rails_root.join('firebase-admin-sdk-tkray-bad-ideas-106028a5b26f.json').to_s
+end
+
+class LoadTest < Thor
+  include Thor::Actions
+
+  no_commands do
+    def log
+      @log ||= Logger.new($stdout, level: Logger::DEBUG)
+    end
+
+    def db
+      @db ||= Google::Cloud::Firestore.new
+    end
+
+    def fetch_game(game_name)
+      db.doc("games/#{game_name}")
+    end
+  end
+
+  desc "setup", "set up a game for load testing"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  method_option :player_count, type: :numeric, required: true, aliases: '-c'
+  def setup
+    game = fetch_game(options[:game])
+
+    options[:player_count].times do
+      player_id = SecureRandom.hex
+      log.debug "creating player #{player_id}"
+      game.collection('players').doc(player_id).set({is_active: true})
+    end
+
+    log.info "created #{options[:player_count]} player records."
+  end
+
+  desc "generate", "create load"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  # method_option :threads, type: :numeric, default: 1, aliases: '-t'
+  def generate
+    game = fetch_game(options[:game])
+
+    player_ids = []
+    game.collection('players').where('is_active', '==', 'true').get.each do |player_snapshot|
+      player_ids << player_snapshot.document_id
+    end
+    player_count = player_ids.size
+
+    log.info "#{player_count} active players."
+
+    previous_second = nil
+    sent_this_second = 0
+    loop do
+      player_id = player_ids[rand(player_count)]
+      game.collection('player_answers').doc(player_id).set({answer_id: rand(2)})
+      sent_this_second += 1
+
+      this_second = Process.clock_gettime(Process::CLOCK_MONOTONIC).to_i
+      if this_second != previous_second
+        log.info "sent #{sent_this_second} this second."
+        sent_this_second = 0
+        previous_second = this_second
+      end
+    end
+  end
+
+  desc "consume", "consume load"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  def consume
+    game = fetch_game(options[:game])
+
+    game.col('player_answers').listen do |snapshot|
+      latency = ''
+      if snapshot.changes.size > 0
+        changed_doc = snapshot.changes[0].doc
+        latency = changed_doc.read_at - changed_doc.updated_at
+      end
+
+      log.info "#{snapshot.docs.size} docs received. #{snapshot.changes.size} changes. latency: #{latency}"
+
+
+      this_second = Process.clock_gettime(Process::CLOCK_MONOTONIC).to_i
+      # if this_second != previous_second
+      #   log.info "received #{sent_this_second} this second."
+      #   sent_this_second = 0
+      #   previous_second = this_second
+      # end
+    end
+
+    trap("INT") do
+      @exit = 0
+    end
+
+    loop do
+      break if @exit
+      sleep 0.5
+    end
+
+    log.info 'exiting.'
+  end
+end
+
+LoadTest.start

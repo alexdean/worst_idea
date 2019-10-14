@@ -24,6 +24,7 @@ class GameState
 
   VALID_STAGES = Set.new([
     JOINING,
+    PREPARING,
     QUESTION_OPEN,
     QUESTION_CLOSED,
     QUESTION_RESULTS,

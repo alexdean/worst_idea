@@ -29,18 +29,31 @@ class WorstIdeaAdmin < Thor
     end
   end
 
-  # bin/admin init --test
   desc "init", "Create a new game from the given template."
   method_option :production, type: :boolean, default: false
   method_option :template, type: :boolean, default: 'test', aliases: '-t'
   method_option :name, type: :string, aliases: '-n', desc: "nice name for the game"
+  method_option :game, type: :string, aliases: '-g'
   def init
-    now = Time.now
-    if options[:production]
-      game_name = 'current'
-    else
-      game_name = "#{now.strftime('%Y%m%d')}-#{options[:template]}-#{RandomWord.nouns(not_shorter_than: 4, not_longer_than: 20).next.gsub('_', '-')}"
+    log.debug 'started'
+
+    if options[:production] && options[:game]
+      log.error "cannot specify both --production and --game"
+      exit 1
     end
+
+    now = Time.now
+    game_name = options[:game]
+
+    if !game_name
+      if options[:production]
+        game_name = 'current'
+      else
+        game_name = "#{now.strftime('%Y%m%d')}-#{options[:template]}-#{RandomWord.nouns(not_shorter_than: 4, not_longer_than: 20).next.gsub('_', '-')}"
+      end
+    end
+
+    log.debug "game_name: '#{game_name}'"
 
     template_path = $rails_root.join("config/game_templates/#{options[:template]}.yml")
     if !File.exist?(template_path)
@@ -49,8 +62,10 @@ class WorstIdeaAdmin < Thor
     end
     template_data = YAML.load_file(template_path)
 
+    log.debug 'loaded template data'
+
     game = fetch_game(game_name)
-    game.delete
+
     next_state = GameState.new(
       title: options[:name] || game_name,
       current_stage: GameState::JOINING,
@@ -59,14 +74,37 @@ class WorstIdeaAdmin < Thor
       active_question_max_answer_id: nil,
       created_at: now
     )
+
+    log.debug "setting game state. #{game.document_path} #{next_state.to_h.inspect}"
     game.set(next_state.to_h)
+    log.debug 'game state set.'
 
     questions = game.col('questions')
-    # nothing in here initially. just FYI they exist.
+    log.info "deleting existing questions."
+    db.transaction do |tx|
+      questions.get.each do |question|
+        tx.delete(question)
+      end
+    end
+
     # answers for the current question only. (erased after each question is fully summarized.)
     player_answers = game.col('player_answers')
-    players = game.col('players')
+    log.info "deleting existing player_answers."
+    db.transaction do |tx|
+      player_answers.get.each do |player_answer|
+        tx.delete(player_answer)
+      end
+    end
 
+    players = game.col('players')
+    log.info "deleting existing players."
+    db.transaction do |tx|
+      players.get.each do |player|
+        tx.delete(player)
+      end
+    end
+
+    log.info 'creating questions.'
     template_data['questions'].each_with_index do |(question_text, answers), idx|
       question = questions.doc(idx)
       question.set(
@@ -74,9 +112,10 @@ class WorstIdeaAdmin < Thor
         answers: answers,
         summary: {}
       )
+      log.debug "created question #{idx}."
     end
 
-    log.info "created game '#{game_name}'"
+    log.info "initialized game '#{game_name}'"
     `printf '#{game_name}' | pbcopy`
   end
 
@@ -85,59 +124,96 @@ class WorstIdeaAdmin < Thor
   def summarize
     game = fetch_game(options[:game])
 
-    players = Set.new
-    players_mutex = Mutex.new
-
     # listen for updates to the list of active players.
-    players_listener = game.col('players').listen do |snapshot|
-      players_mutex.synchronize do
-        players = Set.new
+    #
+    # disabling this to save work in summarizer. will rely on firestore rules
+    # to prevent people from inserting unwanted answers.
+    #
+    # players = Set.new
+    # players_mutex = Mutex.new
+    # players_listener = game.col('players').listen do |snapshot|
+    #   log.debug "got player snapshot."
+    #   players_mutex.synchronize do
+    #     players = Set.new
 
-        snapshot.docs.each do |doc|
-          data = doc.data
-          player_id = doc.document_id
-          players << player_id if doc[:is_active]
-        end
-      end
-      log.info "updated player list. #{players.inspect}"
-    end
-
-    log.info "players: #{players.to_a.inspect}"
+    #     snapshot.docs.each do |doc|
+    #       data = doc.data
+    #       player_id = doc.document_id
+    #       players << player_id if doc[:is_active]
+    #     end
+    #   end
+    #   log.info "updated player list. #{players.size} active players."
+    # end
 
     game_data_mutex = Mutex.new
     game_data = nil
     game_listener = game.listen do |snapshot|
+      log.debug "got game snapshot."
       game_data_mutex.synchronize do
         game_data = snapshot.data
-        log.info "new game data. #{game_data.inspect}"
+        if game_data.nil?
+          log.error "game has no data."
+        else
+          log.info "new game data. current_stage:#{game_data[:current_stage]}, active_question_id:#{game_data[:active_question_id]}, leader_player_id:#{game_data[:leader_player_id]}"
+        end
       end
     end
 
-    summarizer = game.col('player_answers').listen do |snapshot|
-      active_question_id = nil
-      active_question_max_answer_id = nil
+    trap("INT") do
+      @exit = 0
+    end
+
+    update_every = 2 # wait this many seconds between summary updates.
+    last_summary_written_at = 0
+    active_question_id = nil
+    active_question_max_answer_id = nil
+    current_stage = nil
+    summaries_since_last_stage_change = 0
+    loop do
+      break if @exit
+
+      do_summary = false
 
       game_data_mutex.synchronize do
-        active_question_id = game_data[:active_question_id]
-        active_question_max_answer_id = game_data[:active_question_max_answer_id]
+        if !game_data.nil?
+          active_question_id = game_data[:active_question_id]
+          active_question_max_answer_id = game_data[:active_question_max_answer_id]
+
+          if current_stage != game_data[:current_stage]
+            summaries_since_last_stage_change = 0
+            current_stage = game_data[:current_stage]
+          end
+
+          # do_summary: while in question-open, plus once during question-closed
+          do_summary = current_stage == GameState::QUESTION_OPEN || (current_stage == GameState::QUESTION_CLOSED && summaries_since_last_stage_change == 0)
+        end
       end
 
-      snapshot.docs.each do |player_doc|
-        summary = {}
-        player_id = player_doc.document_id
-        answer_id = player_doc.data[:answer]
+      if !do_summary
+        sleep 0.5
+        next
+      end
 
+      summary = {}
+      # fully populate the hash, so we correctly set a value back to 0 if users had chosen it but no longer do.
+      # active_question_max_answer_id is 0-indexed. 2 questions have max_id 1
+      # hence +1.
+      (active_question_max_answer_id + 1).times { |idx| summary[idx] = 0 }
+
+      game.col('player_answers').get do |player_doc|
+        player_id = player_doc.document_id
+        answer_id = player_doc.data[:answer_id]
         log_context = "active_question_id:#{active_question_id}, player_id:#{player_id}, answer_id:#{answer_id}"
 
-        players_mutex.synchronize do
-          if !players.include?(player_id)
-            log.error "#{log_context} unknown or inactive player. players:#{players.inspect}"
-            next
-          end
-        end
+        # players_mutex.synchronize do
+        #   if !players.include?(player_id)
+        #     log.error "#{log_context} unknown or inactive player. players:#{players.inspect}"
+        #     next
+        #   end
+        # end
 
         if !answer_id.is_a?(Integer)
-          log.error "#{log_context} not an integer"
+          log.error "#{log_context} not an integer. is #{answer_id.class}"
           next
         end
 
@@ -147,32 +223,30 @@ class WorstIdeaAdmin < Thor
           next
         end
 
-        summary[answer_id] ||= 0
+        # TODO: paranoia. hash should already have all keys so this should be unnecessary.
+        # summary[answer_id] ||= 0
         summary[answer_id] += 1
-
-        db.transaction do
-          # update not set, to ensure that we remove outdated keys. (set with merge: true does not do this.)
-          game.col("questions").doc(question_id).update({summary: summary})
-          game.set(GameState.new({summary: summary}).to_h, {merge: true})
-        end
-        log.info "summarized question:#{question_id}, #{summary.inspect}"
       end
-    end
 
-    trap("INT") do
-      @exit = 0
-    end
+      now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      since_last_write = now - last_summary_written_at
+      if since_last_write < update_every
+        sleep_for = (update_every - since_last_write).round(3)
+        log.info "sleeping #{sleep_for}s"
+        sleep sleep_for
+      end
 
-    loop do
-      break if @exit
-      sleep 0.5
+      log.info "writing summary #{summary.inspect}"
+      db.transaction do |tx|
+        tx.update(game.col("questions").doc(active_question_id), {summary: summary})
+        tx.update(game, {summary: summary})
+      end
+      log.info "summary written."
+      summaries_since_last_stage_change += 1 # TODO: dont think this needs mutex, but maybe?
+      last_summary_written_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
     end
 
     log.info 'exiting.'
-
-    summarizer.stop
-    players_listener.stop
-    game_listener.stop
   end
 
   desc "crown", "select the next Emperor of Bad Ideas"
@@ -203,13 +277,13 @@ class WorstIdeaAdmin < Thor
     # might manage to do something silly.
     current_emperors = game.collection('players').where('is_leader', '==', true).get
 
-    db.transaction do
-      game.update(leader_player_id: next_emperor.document_id)
+    db.transaction do |tx|
+      tx.update(game, leader_player_id: next_emperor.document_id)
       current_emperors.each do |current_emperor_snapshot|
         log.info "dethroning #{current_emperor_snapshot[:name]}"
-        current_emperor_snapshot.reference.update({is_leader: false})
+        tx.update(current_emperor_snapshot.reference, {is_leader: false})
       end
-      next_emperor.reference.update({is_leader: true})
+      tx.update(next_emperor.reference, {is_leader: true, is_active: true})
     end
 
     log.info "A new Emperor has been crowned!"
@@ -248,8 +322,11 @@ class WorstIdeaAdmin < Thor
         log.error "cannot assign codes while in 'joining' stage. users have write access to their data now."
         exit 1
       end
-      game.collection('players').get.each do |player_snapshot|
-        player_snapshot.reference.set({short_code: unique_short_code}, merge: true)
+
+      db.transaction do |tx|
+        game.collection('players').get.each do |player_snapshot|
+          tx.update(player_snapshot.reference, {short_code: unique_short_code})
+        end
       end
     end
 
@@ -290,6 +367,11 @@ class WorstIdeaAdmin < Thor
 
     if emperor_id.nil?
       log.error "game has no Emperor. cannot calculate results."
+      exit 1
+    end
+
+    if game_data[:current_stage] != GameState::QUESTION_CLOSED
+      log.error "Current stage is '#{game_data[:current_stage]}'. Can only eliminate players during '#{GameState::QUESTION_CLOSED}'."
       exit 1
     end
 
@@ -351,23 +433,20 @@ class WorstIdeaAdmin < Thor
       end
     end
 
-    # don't count the Emperor as 'still active'.
-    still_active -= 1
-
-    log.info "about to eliminate #{to_eliminate.size} players, which will leave #{still_active} players remaining."
+    log.info "about to eliminate #{to_eliminate.size} players, which will leave #{still_active} players remaining (including the Emperor)."
     if !yes?("Should we continue? (Any answer but 'yes' will exit.)")
       log.info 'Exiting.'
       exit 0
     end
 
-    db.transaction do
+    db.transaction do |tx|
       to_eliminate.each do |player_reference|
-        player_reference.update({is_active: false})
+        tx.update(player_reference, {is_active: false})
       end
     end
 
     log.info "eliminated #{to_eliminate.size} players."
-    log.info "#{still_active} players remain (plus the current Emperor)."
+    log.info "#{still_active} players remain (including the current Emperor)."
   end
 
   desc "next", "advance to the next game state"
@@ -377,8 +456,7 @@ class WorstIdeaAdmin < Thor
     game = fetch_game(game_name)
     game_data = game.get
 
-    # TODO: struct for game state
-
+    # TODO: an actual state machine to sort out this mess.
     next_game_state = GameState.new
     next_question_id = nil
     clear_player_answers = false
@@ -388,14 +466,13 @@ class WorstIdeaAdmin < Thor
     when GameState::PREPARING then
       next_question_id = 0
     when GameState::QUESTION_OPEN then
-      next_game_state.set(:current_stage, GameState::QUESTION_CLOSED)
-    when GameState::QUESTION_CLOSED then
       if game_data[:leader_player_id].nil?
         log.error "game has no Emperor. cannot calculate results without one."
         exit 1
-      else
-        eliminate_players(game)
       end
+      next_game_state.set(:current_stage, GameState::QUESTION_CLOSED)
+      log.info "make sure to eliminate players before moving to RESULTS stage."
+    when GameState::QUESTION_CLOSED then
       next_game_state.set(:current_stage, GameState::QUESTION_RESULTS)
     when GameState::QUESTION_RESULTS then
       current_question_id = game_data[:active_question_id]
@@ -422,18 +499,20 @@ class WorstIdeaAdmin < Thor
     end
 
     # TODO: eliminate players
-    next_game_state.set(:summary, {})
+    # next_game_state.set(:summary, {})
 
     log.info next_game_state.inspect
     next_game_state_data = next_game_state.to_h
-    db.transaction do
-      game.set(
+    db.transaction do |tx|
+      tx.set(
+        game,
         next_game_state_data,
         merge: true
       )
+      # TODO: expose this as a separate action in case something fails when changing game states.
       if clear_player_answers
         game.col('player_answers').get do |snapshot|
-          snapshot.reference.delete
+          tx.delete(snapshot.reference)
         end
       end
     end
@@ -444,7 +523,7 @@ class WorstIdeaAdmin < Thor
     # actions to take once state has changed.
     if current_game_state_data[:current_stage] == GameState::PREPARING
       log.info "generating short codes for all players."
-      generate_short_codes(game)
+      assign_short_codes(game)
     end
 
     # questions.where('sequence', '=', 1).get.first.data
