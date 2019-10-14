@@ -26,3 +26,6 @@
 /yarn-error.log
 yarn-debug.log*
 .yarn-integrity
+
+# Firebase secret
+firebase-admin*.json
