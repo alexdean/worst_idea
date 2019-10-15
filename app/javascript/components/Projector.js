@@ -1,0 +1,217 @@
+import React, { useContext, useState, useEffect, useRef } from "react";
+import { useAuthState } from "react-firebase-hooks/auth";
+import {
+  useCollection,
+  useCollectionOnce,
+  useDocument
+} from "react-firebase-hooks/firestore";
+import firebase from "./firebase";
+import Cookies from "js-cookie";
+
+const db = firebase.firestore();
+
+const Projector = () => {
+  // App state
+  const [gameId, setGameId] = useState(null); // stores the gameId for the session
+  const [questions, setQuestions] = useState([]); // stores all the questions for the gamdId
+  const [stage, setStage] = useState(null); // joining | question-open | question-closed | question-results | finished
+  const [leaderId, setLeaderId] = useState(null); // stores uid of the 'emperor'
+  const [currentQuestionId, setCurrentQuestionId] = useState(null); // stores current question index
+  const [summary, setSummary] = useState({ total: 0 }); // store the current question's summary
+
+  // Establishes and maintains Firebase auth. We can check the value of 'user' and do things based on that
+  const [user, initializing, error] = useAuthState(firebase.auth());
+
+  // Get and store questions for the gameId stored in the above state...
+  const [questionsValue, questionsLoading, questionsError] = useCollection(
+    gameId &&
+      user &&
+      db
+        .collection("games")
+        .doc(gameId)
+        .collection("questions")
+  );
+
+  // Subscribe to game document
+  const [gameValue, gameLoading, gameError] = useDocument(
+    gameId && user && db.collection("games").doc(gameId)
+  );
+
+  // Get and store the available collection Games...
+  const [gamesValue, gamesLoading, gamesError] = useCollectionOnce(
+    db.collection("games")
+  );
+
+  const logout = () => {
+    let c = confirm("You can't rejoin after the game starts. Really quit?");
+    if (c) {
+      firebase.auth().signOut();
+      Cookies.remove("_worst_idea_game_id");
+    }
+  };
+
+  const login = game => {
+    console.log("Authenticating...");
+    // todo: validate name input
+    firebase
+      .auth()
+      .signInAnonymously()
+      .catch(error => {
+        console.error("Firebase auth error", error);
+      })
+      .then(u => {
+        let gameId = game.data().title;
+        setGameId(gameId);
+        Cookies.set("_worst_idea_game_id", gameId);
+      });
+  };
+
+  // useEffect runs whenever the values listed in their last argument (the array) change.
+  // In this case, whenever {user} updates
+  useEffect(() => {
+    // console.log("user updated: ", user);
+    let c = Cookies.get("_worst_idea_game_id");
+    // console.log("Game id cookie: ", c);
+    c && setGameId(c);
+  }, [user]);
+
+  // Runs whenever the game doc updates
+  useEffect(() => {
+    console.log("gameValue updated: ", gameValue);
+    if (gameValue) {
+      // Update the current question id
+      setStage(gameValue.data().current_stage);
+      setCurrentQuestionId(gameValue.data().active_question_id);
+      setLeaderId(gameValue.data().leader_player_id);
+      gameValue.data().summary && summarize(gameValue.data().summary);
+    }
+  }, [gameValue]);
+
+  // Runs when the questions collection is updated
+  useEffect(() => {
+    questionsValue &&
+      setQuestions(questionsValue.docs.map((question, i) => question.data()));
+  }, [questionsValue]);
+
+  // Calculate the total answer count for the active question
+  const summarize = data => {
+    const reducer = (accumulator, current) => accumulator + current;
+    let totalAnswerCount = Object.values(data).reduce(reducer);
+    setSummary({
+      total: totalAnswerCount
+    });
+  };
+
+  // Renders ––––––––––––––––––––
+
+  // If auth'd...
+  if (user) {
+    return (
+      <div className="text-gray-200 h-screen flex justify-center items-center">
+        <div className="p-20 w-full">
+          {(stage === "question-open" ||
+            stage === "question-closed" ||
+            stage === "question-results") && (
+            <div className="w-full">
+              {currentQuestionId !== null && gameValue && (
+                <div className="">
+                  <div
+                    className="font-bold mb-10"
+                    style={{
+                      fontSize: "4rem"
+                    }}
+                  >
+                    {questions[currentQuestionId].question}
+                  </div>
+                  <div className="">
+                    {questions[currentQuestionId].answers.map((answer, i) => {
+                      let count = gameValue.data().summary
+                        ? gameValue.data().summary[i]
+                        : 0;
+                      let percentage = Math.floor(
+                        (count / summary.total) * 100
+                      );
+                      console.log("count", count);
+                      console.log(summary.total);
+                      return (
+                        <div className="my-4" key={i}>
+                          <div
+                            onClick={e => onAnswerSelect(e, i)}
+                            className={`answer text-lg inline-block w-full overflow-hidden`}
+                          >
+                            <div
+                              className="p-6 text-3xl"
+                              style={{
+                                backgroundImage: `linear-gradient(90deg, rgba(246,0,0,.5) 0%, rgba(246,0,0,.5) ${percentage}%, rgba(246,0,0,0) ${percentage}%)`
+                              }}
+                            >
+                              {answer} {count > 0 && `(${percentage}%)`}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="fixed bottom-0 inset-x-0">
+          <div className="p-3 flex justify-between items-center">
+            <div className="">{stage && stage}</div>
+            <div className="">
+              <button className="opacity-50" onClick={logout}>
+                Quit
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If user not defined, list available games. This the entrance to the player app.
+  // All players will see this at the beginning of their experience.
+  return (
+    <div className="p-4 text-gray-200">
+      {initializing && (
+        <div>
+          <p>Initializing User...</p>
+        </div>
+      )}
+      {error && (
+        <div>
+          <p>Error: {error}</p>
+        </div>
+      )}
+
+      <div className="font-bold mb-4 py-1 text-2xl">
+        Choose a game to spectate
+      </div>
+      <div className="">
+        {gamesValue &&
+          gamesValue.docs.map((game, i) => {
+            return (
+              <div
+                key={i}
+                className="flex items-center justify-between w-full my-2"
+              >
+                <div className="">{game.data().title}</div>
+                <button
+                  className="bg-indigo-600 text-white p-2 px-6 rounded"
+                  onClick={() => login(game)}
+                >
+                  Spectate
+                </button>
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+};
+
+export default Projector;

@@ -220,7 +220,7 @@ const Player = () => {
                 </div>
                 <div className="">
                   {questions[currentQuestionId].answers.map((answer, i) => {
-                    let count = gameValue.data().summary[i]
+                    let count = gameValue.data().summary
                       ? gameValue.data().summary[i]
                       : 0;
                     let percentage = Math.floor((count / summary.total) * 100);

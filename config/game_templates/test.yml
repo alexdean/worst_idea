@@ -1,9 +1,15 @@
 questions:
-  'what is your favorite color?':
+  "What is your favorite color?":
     - Blue
     - Green
     - Red
     - Paisley
-  'how great is bacon?':
+  "How great is bacon?":
     - Yum
     - Yuck
+  "The next Audacious project is...":
+    - Fallacious project
+    - Ostentatious project
+    - Cretatious project
+    - Delicious project
+    - Superstious project
