@@ -19,7 +19,8 @@ const Player = () => {
   const [currentQuestionId, setCurrentQuestionId] = useState(null); // stores current question index
   const [selectedAnswer, setSelectedAnswer] = useState(null); // holds player's currently selected answer index
   const [playerIsActive, setPlayerIsActive] = useState(false); // store player active state. False after an incorrect answer
-  const [summary, setSummary] = useState({ totalAnswerCount: 0 }); // store the current question's summary
+  const [summary, setSummary] = useState({ total: 0 }); // store the current question's summary
+  const [isLeader, setIsLeader] = useState(false); // store if the player is the current leader
 
   // App refs
   const nameRef = useRef(null); // reference to the name input
@@ -114,6 +115,7 @@ const Player = () => {
       setCurrentQuestionId(gameValue.data().active_question_id);
       setStage(gameValue.data().current_stage);
       setLeaderId(gameValue.data().leader_player_id);
+      setIsLeader(gameValue.data().leader_player_id === user.uid);
       // If the current question changed, then reset the player's selected answer
       if (qid != gameValue.data().active_question_id) {
         setSelectedAnswer(null);
@@ -219,11 +221,9 @@ const Player = () => {
                     let count = gameValue.data().summary[i]
                       ? gameValue.data().summary[i]
                       : 0;
-                    let percentage = Math.floor(
-                      (count / summary.totalAnswerCount) * 100
-                    );
+                    let percentage = Math.floor((count / summary.total) * 100);
                     console.log("count", count);
-                    console.log(summary.totalAnswerCount);
+                    console.log(summary.total);
                     return (
                       <div className="my-4" key={i}>
                         <div
@@ -263,10 +263,7 @@ const Player = () => {
               {playerValue && (
                 <div className="">
                   <div className="">
-                    {gameValue &&
-                      gameValue.data().leader_player_id === user.uid && (
-                        <div className="">👑</div>
-                      )}
+                    {isLeader && <div className="">👑</div>}
                   </div>
                   <div className="font-bold">{playerValue.data().name}</div>
                   <div className="">
