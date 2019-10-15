@@ -1,9 +1,9 @@
 #!/usr/bin/env ruby
 require_relative '../lib/game_state'
+require_relative '../lib/log'
 require "google/cloud/firestore"
 require "logger"
 require "pathname"
-require "random-word"
 require "securerandom"
 require "thor"
 
@@ -17,7 +17,7 @@ class LoadTest < Thor
 
   no_commands do
     def log
-      @log ||= Logger.new($stdout, level: Logger::DEBUG)
+      @log ||= Log.new($stdout, level: Logger::DEBUG)
     end
 
     def db
@@ -51,7 +51,7 @@ class LoadTest < Thor
     game = fetch_game(options[:game])
 
     player_ids = []
-    game.collection('players').where('is_active', '==', 'true').get.each do |player_snapshot|
+    game.collection('players').where('is_active', '==', true).get.each do |player_snapshot|
       player_ids << player_snapshot.document_id
     end
     player_count = player_ids.size
@@ -61,9 +61,13 @@ class LoadTest < Thor
     previous_second = nil
     sent_this_second = 0
     loop do
-      player_id = player_ids[rand(player_count)]
-      game.collection('player_answers').doc(player_id).set({answer_id: rand(2)})
-      sent_this_second += 1
+      db.transaction do |tx|
+        50.times do
+          player_id = player_ids[rand(player_count)]
+          game.collection('player_answers').doc(player_id).set({answer_id: rand(4)})
+          sent_this_second += 1
+        end
+      end
 
       this_second = Process.clock_gettime(Process::CLOCK_MONOTONIC).to_i
       if this_second != previous_second
@@ -72,41 +76,6 @@ class LoadTest < Thor
         previous_second = this_second
       end
     end
-  end
-
-  desc "consume", "consume load"
-  method_option :game, type: :string, required: true, aliases: '-g'
-  def consume
-    game = fetch_game(options[:game])
-
-    game.col('player_answers').listen do |snapshot|
-      latency = ''
-      if snapshot.changes.size > 0
-        changed_doc = snapshot.changes[0].doc
-        latency = changed_doc.read_at - changed_doc.updated_at
-      end
-
-      log.info "#{snapshot.docs.size} docs received. #{snapshot.changes.size} changes. latency: #{latency}"
-
-
-      this_second = Process.clock_gettime(Process::CLOCK_MONOTONIC).to_i
-      # if this_second != previous_second
-      #   log.info "received #{sent_this_second} this second."
-      #   sent_this_second = 0
-      #   previous_second = this_second
-      # end
-    end
-
-    trap("INT") do
-      @exit = 0
-    end
-
-    loop do
-      break if @exit
-      sleep 0.5
-    end
-
-    log.info 'exiting.'
   end
 end
 

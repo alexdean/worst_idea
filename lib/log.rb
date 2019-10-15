@@ -13,12 +13,8 @@ class Log
     @log = Logger.new($stdout, level: Logger::DEBUG)
     @batch_mutex = Mutex.new
 
-    # I, [2019-10-14T16:53:29.527278 #97539]  INFO -- : 0 active players.
     @log.formatter = ->(severity, datetime, progname, raw) do
-      # puts "#{severity}, #{datetime}, #{progname}, #{raw}"
-      # label = Logger::SEV_LABEL[severity]
-
-      prefix = "#{severity[0]}, [#{datetime.strftime("%H:%M:%S")}] #{severity.rjust(6)} :"
+      prefix = "#{severity[0]}, [#{datetime.strftime("%H:%M:%S.%5N")}] #{severity.rjust(6)} :"
 
       if raw.is_a?(Hash)
         out = ''
@@ -27,8 +23,6 @@ class Log
           out += "#{prefix}   #{key.to_s.rjust(col_width)} : #{value}\n"
         end
       else
-        puts 'not hash!'
-        puts "#{raw.inspect} #{raw.class}"
         out = "#{prefix} #{raw}\n"
       end
 
