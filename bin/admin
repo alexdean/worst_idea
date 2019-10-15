@@ -106,13 +106,11 @@ class WorstIdeaAdmin < Thor
 
     log.info 'creating questions.'
     template_data['questions'].each_with_index do |(question_text, answers), idx|
-      question = questions.doc(idx)
-      question.set(
+      question_data = {
         question: question_text,
-        answers: answers,
-        summary: {}
-      )
-      log.debug "created question #{idx}."
+        answers: answers
+      }
+      create_question(game, idx, question_data)
     end
 
     log.info "initialized game '#{game_name}'"
@@ -537,6 +535,52 @@ class WorstIdeaAdmin < Thor
 
     log.info "current_stage: #{game_data[:current_stage]}, active_question_id: #{game_data[:active_question_id]}," \
       " active_question_max_answer_id: #{game_data[:active_question_max_answer_id]}"
+  end
+
+  no_commands do
+    def create_question(game, question_id, question_data)
+      game.collection('questions').doc(question_id).set({ summary: {} }.merge(question_data))
+      log.debug "created question id #{question_id}."
+    end
+  end
+
+  desc "add-question", "add a new question to the game"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  method_option :question, type: :string, required: true, aliases: '-q'
+  method_option :answers, type: :array, required: true, aliases: '-a'
+  def add_question
+    game = fetch_game(options[:game])
+
+    proposed = {
+      answers: options[:answers],
+      question: options[:question]
+    }
+
+    if proposed[:answers].size < 2
+      log.error "question must have at least 2 answers."
+      exit 1
+    end
+
+    questions = game.collection('questions')
+    max_question_id = questions.get.map { |question_snapshot| question_snapshot.document_id.to_i }.max
+    new_question_id = max_question_id + 1
+
+    new_question_number = new_question_id + 1
+
+    log.info "confirm this is correct:"
+    log.info "question: #{proposed[:question]}"
+    log.info "answers:"
+    options[:answers].each_with_index do |answer_text, idx|
+      log.info "  #{idx + 1}: '#{answer_text}'"
+    end
+    log.info "this will be question #{new_question_number} (index #{new_question_id})."
+    if !yes?("enter 'yes' to confirm >")
+      log.info 'cancelled.'
+      exit 0
+    end
+
+    create_question(game, new_question_id, proposed)
+    log.info "question created successfully."
   end
 end
 
