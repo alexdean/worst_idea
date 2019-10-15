@@ -143,7 +143,7 @@ const Player = () => {
   const onAnswerSelect = (e, i) => {
     // let answerIndex = parseInt(e.target.attributes["data-value"].value);
     let answerIndex = i;
-    console.log("Clicked: ", answerIndex, user.uid);
+    // console.log("Clicked: ", answerIndex, user.uid);
     if (stage === "question-open") {
       setSelectedAnswer(answerIndex);
       return db
@@ -208,8 +208,10 @@ const Player = () => {
               </div>
             </div>
           )}
-          {stage !== "joining" &&
-            stage !== "preparing" &&
+          {(stage === "question-open" ||
+            stage === "question-closed" ||
+            stage === "question-results") &&
+            playerIsActive &&
             questions.length > 0 &&
             currentQuestionId !== null && (
               <div className="p-8">
@@ -249,14 +251,15 @@ const Player = () => {
                   {stage === "question-closed" && (
                     <div className="">Answers are now locked in</div>
                   )}
-                  {stage === "question-result" && (
-                    <div className="">Results...</div>
+                  {stage === "question-results" && (
+                    <div className="">Results are in...</div>
                   )}
                 </div>
               </div>
             )}
         </div>
 
+        {/* Footer */}
         <div className="bottom-0 inset-x-0 fixed">
           <div className="flex items-center justify-between p-4">
             <div className="">
@@ -271,7 +274,7 @@ const Player = () => {
                       playerValue.data().short_code}
                   </div>
                   <div className="text-sm">
-                    {!playerIsActive && "Damn. You're out of the game 😕"}
+                    {playerIsActive ? "In" : "Damn. You're out of the game 😕"}
                   </div>
                 </div>
               )}
