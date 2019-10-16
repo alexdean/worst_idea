@@ -64,16 +64,16 @@ class WorstIdeaAdmin < Thor
       candidates[0]
     end
 
-    def assign_short_codes(game)
+    def finalize_players(game)
       game_data = game.get
       if game_data[:current_stage] == GameState::JOINING
-        log.error "cannot assign codes while in 'joining' stage. users have write access to their data now."
+        log.error "cannot finalize players while in 'joining' stage. users have write access to their data now."
         exit 1
       end
 
       db.transaction do |tx|
         game.collection('players').get.each do |player_snapshot|
-          tx.update(player_snapshot.reference, {short_code: unique_short_code})
+          tx.set(player_snapshot.reference, {is_active: true, short_code: unique_short_code})
         end
       end
     end
@@ -345,12 +345,12 @@ class WorstIdeaAdmin < Thor
     log.info "A new Emperor has been crowned!"
   end
 
-  desc "assign-codes", "generate unique short codes for all players"
+  desc "finalize-players", "generate unique short codes for all players"
   method_option :game, type: :string, required: true, aliases: '-g'
-  def assign_codes
+  def finalize_players
     game_name = options[:game]
     game = fetch_game(game_name)
-    assign_short_codes(game)
+    finalize_players(game)
   end
 
   desc "eliminate", "eliminate players"
@@ -519,7 +519,7 @@ class WorstIdeaAdmin < Thor
     # actions to take once state has changed.
     if current_game_state_data[:current_stage] == GameState::PREPARING
       log.info "generating short codes for all players."
-      assign_short_codes(game)
+      finalize_players(game)
 
       log.info "creating player_answers"
       db.transaction do |tx|
@@ -580,6 +580,29 @@ class WorstIdeaAdmin < Thor
 
     create_question(game, new_question_id, proposed)
     log.info "question created successfully."
+  end
+
+  desc "delete-doc-test", "test what happens when you listen to a document that gets deleted"
+  method_option :game, type: :string, required: true, aliases: '-g'
+  def delete_doc_test
+    game = fetch_game(options[:game])
+    player = game.collection('players').get.to_a.first
+
+    log.info "listening to player #{player.document_id}"
+
+    player.reference.listen do |snapshot|
+      log.info snapshot.inspect
+      log.info "document is missing? #{snapshot.missing?}"
+    end
+
+    trap("INT") do
+      @exit = 0
+    end
+
+    loop do
+      break if @exit
+      sleep 0.5
+    end
   end
 end
 
