@@ -74,6 +74,12 @@ const Projector = () => {
     }
   };
 
+  // stuf for cleanup
+  const reset = () => {
+    firebase.auth().signOut();
+    Cookies.remove("_worst_idea_game_id");
+  };
+
   const login = game => {
     console.log("Authenticating...");
     // todo: validate name input
@@ -152,6 +158,31 @@ const Projector = () => {
     return (
       <div className="text-gray-200 h-screen flex justify-center items-center">
         <div className="p-20 w-full">
+          {stage === "joining" ||
+            (stage === "preparing" && (
+              <div className="w-full">
+                <div
+                  className=""
+                  style={{
+                    fontSize: "5rem"
+                  }}
+                >
+                  <div className="font-thin" style={{ fontSize: "6rem" }}>
+                    The Curator of Bad Ideas
+                  </div>
+
+                  <span className="font-bold text-red-600">
+                    go.ted.com/badideas
+                  </span>
+                </div>
+                {stage === "preparing" && (
+                  <div className="text-5xl font-thin">
+                    {gameValue.data().active_player_count} players remaining
+                  </div>
+                )}
+              </div>
+            ))}
+
           {(stage === "question-open" || stage === "question-closed") && (
             <div className="w-full">
               {currentQuestionId !== null && gameValue && (
@@ -203,16 +234,16 @@ const Projector = () => {
             </div>
           )}
           {stage === "question-results" && (
-            <div className="w-full">
+            <div className="w-full text-center">
               <div
                 className="font-bold"
                 style={{
-                  fontSize: "4rem"
+                  fontSize: "10rem"
                 }}
               >
-                Results
+                {gameValue.data().active_player_count}
               </div>
-              <div className="text-4xl">49 players remain.</div>
+              <div className="text-5xl font-thin">players remaining</div>
             </div>
           )}
         </div>

@@ -107,8 +107,10 @@ const Player = () => {
 
   // Runs when the player doc updates
   useEffect(() => {
-    console.log("playerValue updated: ", playerValue);
-    playerValue && setPlayerIsActive(playerValue.data().is_active);
+    if (playerValue) {
+      console.log("playerValue updated: ", playerValue.data());
+      setPlayerIsActive(playerValue.data().is_active);
+    }
     playerError && console.error("Error updating player", playerError);
   }, [playerValue, playerError]);
 
@@ -315,10 +317,10 @@ const Player = () => {
             <div className="">
               {playerValue && (
                 <div className="">
-                  <div className="">
-                    {isLeader && <div className="">👑</div>}
+                  <div className="font-bold">
+                    {isLeader && <span className="">👑</span>}{" "}
+                    {playerValue.data().name}
                   </div>
-                  <div className="font-bold">{playerValue.data().name}</div>
                   <div className="">
                     {playerValue.data().short_code &&
                       playerValue.data().short_code}
