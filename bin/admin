@@ -345,13 +345,13 @@ class WorstIdeaAdmin < Thor
     log.info "A new Emperor has been crowned!"
   end
 
-  desc "finalize-players", "generate unique short codes for all players"
-  method_option :game, type: :string, required: true, aliases: '-g'
-  def finalize_players
-    game_name = options[:game]
-    game = fetch_game(game_name)
-    finalize_players(game)
-  end
+  # desc "finalize-players", "generate unique short codes for all players"
+  # method_option :game, type: :string, required: true, aliases: '-g'
+  # def finalize_players
+  #   game_name = options[:game]
+  #   game = fetch_game(game_name)
+  #   finalize_players(game)
+  # end
 
   desc "eliminate", "eliminate players"
   method_option :game, type: :string, required: true, aliases: '-g'
