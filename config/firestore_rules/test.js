@@ -47,10 +47,10 @@ after(async () => {
 });
 
 describe("worst idea", () => {
-  it('does not allow unauthenticated user to read', async () => {
+  it('allows unauthenticated user to read', async () => {
     const db = authedApp(null);
     const games = db.collection('games');
-    await firebase.assertFails(games.get());
+    await firebase.assertSucceeds(games.get());
   });
 
   it('allows users to list open games', async () => {
@@ -58,6 +58,7 @@ describe("worst idea", () => {
     await admin.collection('games').doc('game1').set({current_stage: 'joining'});
     await admin.collection('games').doc('game2').set({current_stage: 'in-progress'});
 
+    // TODO: assert on returned data. get() will succeed even if we don't get anything.
     const db = authedApp({uid: 'alice'});
     await firebase.assertSucceeds(db.collection('games').where('current_stage', '==', 'joining').get());
   });
@@ -66,7 +67,7 @@ describe("worst idea", () => {
     beforeEach(async () => {
       const admin = adminApp();
       await admin.collection('games').doc('joinable_game').set({current_stage: 'joining'})
-      await admin.collection('games').doc('unjoinable_game').set({current_stage: 'in-progress'})
+      await admin.collection('games').doc('unjoinable_game').set({current_stage: 'preparing'})
     });
 
     it("allows users to join a joinable game", async () => {
@@ -75,7 +76,7 @@ describe("worst idea", () => {
       await firebase.assertSucceeds(game.collection('players').doc('alice').set({is_active: true}));
     });
 
-    it("does not allow users to join a non-joinable game", async () => {
+    it("does not allow users to modify their user record during non-joining stages", async () => {
       const db = authedApp({uid: 'alice'});
       const game = db.collection('games').doc('unjoinable_game');
       await firebase.assertFails(game.collection('players').doc('alice').set({is_active: true}));
@@ -99,7 +100,7 @@ describe("worst idea", () => {
       const admin = adminApp();
       const game = admin.collection('games').doc('game')
       await game.set({
-        current_stage: 'in-progress',
+        current_stage: 'question-open',
         active_question_id: '3',
         active_question_max_answer_id: 2,
       });
