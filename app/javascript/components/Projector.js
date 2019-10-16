@@ -158,30 +158,29 @@ const Projector = () => {
     return (
       <div className="text-gray-200 h-screen flex justify-center items-center">
         <div className="p-20 w-full">
-          {stage === "joining" ||
-            (stage === "preparing" && (
-              <div className="w-full">
-                <div
-                  className=""
-                  style={{
-                    fontSize: "5rem"
-                  }}
-                >
-                  <div className="font-thin" style={{ fontSize: "6rem" }}>
-                    The Curator of Bad Ideas
-                  </div>
-
-                  <span className="font-bold text-red-600">
-                    go.ted.com/badideas
-                  </span>
+          {(stage === "joining" || stage === "preparing") && (
+            <div className="w-full">
+              <div
+                className=""
+                style={{
+                  fontSize: "5rem"
+                }}
+              >
+                <div className="font-thin" style={{ fontSize: "6rem" }}>
+                  The Curator of Bad Ideas
                 </div>
-                {stage === "preparing" && (
-                  <div className="text-5xl font-thin">
-                    {gameValue.data().active_player_count} players remaining
-                  </div>
-                )}
+
+                <span className="font-bold text-red-600">
+                  go.ted.com/badideas
+                </span>
               </div>
-            ))}
+              {stage === "preparing" && (
+                <div className="text-5xl font-thin">
+                  {gameValue.data().active_player_count} players remaining
+                </div>
+              )}
+            </div>
+          )}
 
           {(stage === "question-open" || stage === "question-closed") && (
             <div className="w-full">
