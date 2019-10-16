@@ -76,6 +76,12 @@ describe("worst idea", () => {
       await firebase.assertSucceeds(game.collection('players').doc('alice').set({is_active: true}));
     });
 
+    it("allows user to read their player record in any stage", async () => {
+      const db = authedApp({uid: 'alice'});
+      const game = db.collection('games').doc('unjoinable_game');
+      await firebase.assertSucceeds(game.collection('players').doc('alice').get());
+    });
+
     it("does not allow users to modify their user record during non-joining stages", async () => {
       const db = authedApp({uid: 'alice'});
       const game = db.collection('games').doc('unjoinable_game');
@@ -173,6 +179,24 @@ describe("worst idea", () => {
   });
 
   describe("reading game state", () => {
-    it('allows inactive users to read current game data')
+    it('allows inactive users to read current game data', async () => {
+      const admin = adminApp();
+      const game = admin.collection('games').doc('game')
+      await game.set({
+        current_stage: 'question-open',
+        // these should be null when game is finished. leaving values to ensure test fails due to current_stage
+        // condition not being met.
+        active_question_id: 3,
+        active_question_max_answer_id: 3,
+      });
+
+      const players = game.collection('players');
+      await players.doc('alice').set({is_active: false});
+
+      const alice = authedApp({uid: 'alice'});
+      await firebase.assertSucceeds(
+        alice.collection('games').doc('game').get()
+      );
+    })
   })
 });
