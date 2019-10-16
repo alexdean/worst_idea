@@ -40,7 +40,7 @@ class LoadTest < Thor
     options[:player_count].times do
       player_id = SecureRandom.hex
       log.debug "creating player #{player_id}"
-      game.collection('players').doc(player_id).set({is_active: true})
+      game.collection('players').doc(player_id).set({is_active: true, name: player_id})
     end
 
     log.info "created #{options[:player_count]} player records."

@@ -29,6 +29,10 @@ class WorstIdeaAdmin < Thor
       db.doc("games/#{game_name}")
     end
 
+    def calculate_active_player_count(game)
+      game.col('players').where('is_active', '==', true).get.count
+    end
+
     def create_question(game, question_id, question_data)
       game.collection('questions').doc(question_id).set({ summary: {} }.merge(question_data))
       log.debug "created question id #{question_id}."
@@ -147,6 +151,7 @@ class WorstIdeaAdmin < Thor
       leader_player_id: nil,
       active_question_id: nil,
       active_question_max_answer_id: nil,
+      active_player_count: 0,
       created_at: now
     ).to_h
 
@@ -411,7 +416,6 @@ class WorstIdeaAdmin < Thor
 
     log.debug "player_answers: #{player_answers.inspect}"
     to_eliminate = []
-    still_active = 0
 
     game.collection('players').where('is_active', '==', true).get.each do |player_snapshot|
       player_id = player_snapshot.document_id.strip
@@ -435,8 +439,6 @@ class WorstIdeaAdmin < Thor
 
       if eliminate
         to_eliminate << player_snapshot.reference
-      else
-        still_active += 1
       end
     end
 
@@ -452,8 +454,13 @@ class WorstIdeaAdmin < Thor
       end
     end
 
+    active_player_count = calculate_active_player_count(game)
+    db.transaction do |tx|
+      tx.update(game, {active_player_count: active_player_count})
+    end
+
     log.info "eliminated #{to_eliminate.size} players."
-    log.info "#{still_active} players remain (including the current Emperor)."
+    log.info "#{active_player_count} players remain (including the current Emperor)."
   end
 
   desc "next", "advance to the next game state"
@@ -535,6 +542,10 @@ class WorstIdeaAdmin < Thor
     # actions to take once state has changed.
     if current_game_state_data[:current_stage] == GameState::PREPARING
       finalize_players(game)
+
+      active_player_count = calculate_active_player_count(game)
+      log.info "#{active_player_count} active players."
+      game.update({active_player_count: active_player_count})
     end
   end
 
@@ -543,17 +554,20 @@ class WorstIdeaAdmin < Thor
   def current_state
     game = fetch_game(options[:game])
     game_data = game.get
-    player_count = game.col('players').where('is_active', '==', true).get.count
+    player_count = calculate_active_player_count(game)
 
     emperor_id = game_data[:leader_player_id]
     if emperor_id
-      game.collection('players').doc(emperor_id)
+      emperor_name = game.collection('players').doc(emperor_id).get[:name]
+      emperor_description = "#{emperor_name} (#{emperor_id})"
+    else
+      emperor_description = emperor_id
     end
-    # emperor =
 
     log.info "                current_stage: #{game_data[:current_stage]}"
     log.info "           active_question_id: #{game_data[:active_question_id]}"
     log.info "active_question_max_answer_id: #{game_data[:active_question_max_answer_id]}"
+    log.info "                      emperor: #{emperor_description}"
     log.info "               active_players: #{player_count}"
   end
 

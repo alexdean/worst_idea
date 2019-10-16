@@ -10,6 +10,7 @@ class GameState
     :leader_player_id,
     :active_question_id,
     :active_question_max_answer_id,
+    :active_player_count,
     :created_at,
     :summary
   ])
