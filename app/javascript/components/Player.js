@@ -55,8 +55,8 @@ const Player = () => {
   );
 
   // Get and store the available collection Games...
-  const [gamesValue, gamesLoading, gamesError] = useCollectionOnce(
-    db.collection("games").where("current_stage", "==", "joining")
+  const [gamesValue, gamesLoading, gamesError] = useCollection(
+    db.collection("games").where("title", "==", "current")
   );
 
   const logout = () => {
@@ -68,25 +68,32 @@ const Player = () => {
   };
 
   const login = game => {
-    console.log("Authenticating...");
-    // todo: validate name input
-    firebase
-      .auth()
-      .signInAnonymously()
-      .catch(error => {
-        console.error("Firebase auth error", error);
-      })
-      .then(u => {
-        let gameId = game.data().title;
-        setGameId(gameId);
-        Cookies.set("_worst_idea_game_id", gameId);
-        return db
-          .collection("games")
-          .doc(gameId)
-          .collection("players")
-          .doc(u.user.uid)
-          .set({ is_active: true, name: nameRef.current.value });
-      });
+    console.log("name value: ", nameRef.current.value);
+    if (
+      nameRef.current.value != "" &&
+      nameRef.current.value != null &&
+      game.data().current_stage === "joining"
+    ) {
+      console.log("Authenticating...");
+      // todo: validate name input
+      firebase
+        .auth()
+        .signInAnonymously()
+        .catch(error => {
+          console.error("Firebase auth error", error);
+        })
+        .then(u => {
+          let gameId = game.data().title;
+          setGameId(gameId);
+          Cookies.set("_worst_idea_game_id", gameId);
+          return db
+            .collection("games")
+            .doc(gameId)
+            .collection("players")
+            .doc(u.user.uid)
+            .set({ is_active: true, name: nameRef.current.value });
+        });
+    } else alert("You need to pick a name.");
   };
 
   // useEffect runs whenever the values listed in their last argument (the array) change.
@@ -144,7 +151,7 @@ const Player = () => {
     // let answerIndex = parseInt(e.target.attributes["data-value"].value);
     let answerIndex = i;
     // console.log("Clicked: ", answerIndex, user.uid);
-    if (stage === "question-open") {
+    if (stage === "question-open" && playerIsActive) {
       setSelectedAnswer(answerIndex);
       return db
         .collection("games")
@@ -188,9 +195,11 @@ const Player = () => {
               <div className="absolute inset-0 flex items-center justify-center content-center text-white">
                 <div className="text-center">
                   <div className="text-3xl font-bold px-8 leading-tight">
-                    Waiting for players.
+                    Welcome!
                   </div>
-                  <div className="my-5">This shouldn't take long.</div>
+                  <div className="my-5 text-md">
+                    Hang on just a minute while other players join.
+                  </div>
                 </div>
               </div>
             </div>
@@ -199,18 +208,35 @@ const Player = () => {
             <div className="absolute inset-0 flex items-center justify-center content-center text-white">
               <div className="text-center">
                 <div className="text-3xl font-bold px-8 leading-tight">
-                  Ok {playerValue && <span>{playerValue.data().name}</span>},
-                  we're about ready to start.
+                  We're about ready to start.
                 </div>
-                <div className="my-5">
-                  Just doing a bit of pregame housekeeping.
+                <div className="my-5"></div>
+              </div>
+            </div>
+          )}
+          {stage === "question-results" && (
+            <div className="">
+              <div
+                className="inset-0 absolute opacity-50"
+                style={{
+                  backgroundSize: "cover",
+                  backgroundRepeat: "no-repeat",
+                  backgroundPosition: "50% 50%",
+                  backgroundImage:
+                    "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
+                }}
+              />
+              <div className="absolute inset-0 flex items-center justify-center content-center text-white">
+                <div className="text-center">
+                  <div className="text-3xl font-bold px-8 leading-tight">
+                    You're still alive!
+                  </div>
+                  <div className="my-5 text-md">...</div>
                 </div>
               </div>
             </div>
           )}
-          {(stage === "question-open" ||
-            stage === "question-closed" ||
-            stage === "question-results") &&
+          {(stage === "question-open" || stage === "question-closed") &&
             playerIsActive &&
             questions.length > 0 &&
             currentQuestionId !== null && (
@@ -258,6 +284,28 @@ const Player = () => {
               </div>
             )}
         </div>
+        {!playerIsActive && (
+          <div className="">
+            <div
+              className="inset-0 absolute opacity-50"
+              style={{
+                backgroundSize: "cover",
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "50% 50%",
+                backgroundImage:
+                  "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
+              }}
+            />
+            <div className="absolute inset-0 flex items-center justify-center content-center text-white">
+              <div className="text-center">
+                <div className="text-3xl font-bold px-8 leading-tight">
+                  You're eliminated 🙁
+                </div>
+                <div className="my-5 text-md">Sorry.</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="bottom-0 inset-x-0 fixed">
@@ -274,7 +322,7 @@ const Player = () => {
                       playerValue.data().short_code}
                   </div>
                   <div className="text-sm">
-                    {playerIsActive ? "In" : "Damn. You're out of the game 😕"}
+                    {playerIsActive ? "In" : "Eliminated"}
                   </div>
                 </div>
               )}
@@ -293,7 +341,7 @@ const Player = () => {
   // If user not defined, list available games. This the entrance to the player app.
   // All players will see this at the beginning of their experience.
   return (
-    <div className="p-4 text-gray-200">
+    <div className="p-4 text-gray-200 max-w-md mx-auto text-center">
       {initializing && (
         <div>
           <p>Initializing User...</p>
@@ -307,32 +355,35 @@ const Player = () => {
       <div className="my-5">
         <div className="mb-4">
           <div className="font-bold text-2xl">Who are you?</div>
-          <div className="text-sm text-gray-600">Max 30 chars</div>
         </div>
         <input
-          className="border-0 bg-gray-800 p-2 w-full text-lg"
-          placeholder="Your name"
+          className="border-0 bg-gray-800 p-4 w-full text-lg text-center"
+          placeholder="Enter your name"
           ref={nameRef}
           maxLength={30}
         />
+        <div className="text-sm text-gray-600 my-2">Max 30 chars</div>
       </div>
-      <div className="font-bold mb-4 py-1 text-2xl">Choose a game to join</div>
       <div className="">
         {gamesValue &&
           gamesValue.docs.map((game, i) => {
+            let locked = game.data().current_stage === "joining" ? false : true;
             return (
-              <div
-                key={i}
-                className="flex items-center justify-between w-full my-2"
-              >
-                <div className="">{game.data().title}</div>
-                <button
-                  className="bg-indigo-600 text-white p-2 px-6 rounded"
-                  onClick={() => login(game)}
-                >
-                  Join
-                </button>
-              </div>
+              true && (
+                <div key={i} className="my-2">
+                  <button
+                    className={`text-lg p-4 block px-6 rounded w-full ${
+                      locked
+                        ? `bg-indigo-800 text-indigo-500`
+                        : `font-bold bg-indigo-600 text-white`
+                    }`}
+                    onClick={() => login(game)}
+                    disabled={locked ? true : false}
+                  >
+                    {locked ? `🔒 Locked` : `Join`}
+                  </button>
+                </div>
+              )
             );
           })}
       </div>

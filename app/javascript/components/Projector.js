@@ -42,6 +42,30 @@ const Projector = () => {
     db.collection("games")
   );
 
+  // Get and store the leader's answer
+  const [leaderAnswer, leaderAnswerLoading, leaderAnswerError] = useDocument(
+    gameId &&
+      user &&
+      leaderId &&
+      db
+        .collection("games")
+        .doc(gameId)
+        .collection("player_answers")
+        .doc(leaderId)
+  );
+
+  // Get and store the leader player doc
+  const [leader, leaderLoading, leaderError] = useDocument(
+    gameId &&
+      user &&
+      leaderId &&
+      db
+        .collection("games")
+        .doc(gameId)
+        .collection("players")
+        .doc(leaderId)
+  );
+
   const logout = () => {
     let c = confirm("You can't rejoin after the game starts. Really quit?");
     if (c) {
@@ -69,11 +93,30 @@ const Projector = () => {
   // useEffect runs whenever the values listed in their last argument (the array) change.
   // In this case, whenever {user} updates
   useEffect(() => {
+    console.log("user udpated");
     // console.log("user updated: ", user);
     let c = Cookies.get("_worst_idea_game_id");
     // console.log("Game id cookie: ", c);
     c && setGameId(c);
   }, [user]);
+
+  // Runs when leader doc updates
+  useEffect(() => {
+    console.log("leader updated");
+    if (leader) {
+    }
+  }, [leader]);
+
+  // Runs when leader doc updates
+  useEffect(() => {
+    if (leaderAnswer) {
+      console.log("leader answer updated");
+      // setLeaderAnswer(_leaderAnswer);
+    }
+    if (leaderAnswerError) {
+      console.error("leader answer error");
+    }
+  }, [leaderAnswer, leaderAnswerError]);
 
   // Runs whenever the game doc updates
   useEffect(() => {
@@ -109,9 +152,7 @@ const Projector = () => {
     return (
       <div className="text-gray-200 h-screen flex justify-center items-center">
         <div className="p-20 w-full">
-          {(stage === "question-open" ||
-            stage === "question-closed" ||
-            stage === "question-results") && (
+          {(stage === "question-open" || stage === "question-closed") && (
             <div className="w-full">
               {currentQuestionId !== null && gameValue && (
                 <div className="">
@@ -131,8 +172,8 @@ const Projector = () => {
                       let percentage = Math.floor(
                         (count / summary.total) * 100
                       );
-                      console.log("count", count);
-                      console.log(summary.total);
+                      // console.log("count", count);
+                      // console.log(summary.total);
                       return (
                         <div className="my-4" key={i}>
                           <div
@@ -145,6 +186,11 @@ const Projector = () => {
                                 backgroundImage: `linear-gradient(90deg, rgba(246,0,0,.5) 0%, rgba(246,0,0,.5) ${percentage}%, rgba(246,0,0,0) ${percentage}%)`
                               }}
                             >
+                              {stage === "question-closed" && leaderAnswer && (
+                                <span className="">
+                                  {leaderAnswer.data().answer_id === i && `👑 `}
+                                </span>
+                              )}
                               {answer} {count > 0 && `(${percentage}%)`}
                             </div>
                           </div>
@@ -154,6 +200,19 @@ const Projector = () => {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+          {stage === "question-results" && (
+            <div className="w-full">
+              <div
+                className="font-bold"
+                style={{
+                  fontSize: "4rem"
+                }}
+              >
+                Results
+              </div>
+              <div className="text-4xl">49 players remain.</div>
             </div>
           )}
         </div>
