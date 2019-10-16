@@ -214,28 +214,7 @@ const Player = () => {
               </div>
             </div>
           )}
-          {stage === "question-results" && (
-            <div className="">
-              <div
-                className="inset-0 absolute opacity-50"
-                style={{
-                  backgroundSize: "cover",
-                  backgroundRepeat: "no-repeat",
-                  backgroundPosition: "50% 50%",
-                  backgroundImage:
-                    "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
-                }}
-              />
-              <div className="absolute inset-0 flex items-center justify-center content-center text-white">
-                <div className="text-center">
-                  <div className="text-3xl font-bold px-8 leading-tight">
-                    You're still alive!
-                  </div>
-                  <div className="my-5 text-md">...</div>
-                </div>
-              </div>
-            </div>
-          )}
+
           {(stage === "question-open" || stage === "question-closed") &&
             playerIsActive &&
             questions.length > 0 &&
@@ -284,7 +263,30 @@ const Player = () => {
               </div>
             )}
         </div>
-        {!playerIsActive && (
+
+        {stage === "question-results" && playerIsActive && (
+          <div className="">
+            <div
+              className="inset-0 absolute opacity-50"
+              style={{
+                backgroundSize: "cover",
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "50% 50%",
+                backgroundImage:
+                  "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
+              }}
+            />
+            <div className="absolute inset-0 flex items-center justify-center content-center text-white">
+              <div className="text-center">
+                <div className="text-3xl font-bold px-8 leading-tight">
+                  You're still alive!
+                </div>
+                <div className="my-5 text-md">...</div>
+              </div>
+            </div>
+          </div>
+        )}
+        {stage === "question-results" && !playerIsActive && (
           <div className="">
             <div
               className="inset-0 absolute opacity-50"
