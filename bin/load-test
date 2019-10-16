@@ -49,6 +49,13 @@ class LoadTest < Thor
   # method_option :threads, type: :numeric, default: 1, aliases: '-t'
   def generate
     game = fetch_game(options[:game])
+    game_data = game.get
+
+    if game_data[:current_stage] != GameState::QUESTION_OPEN
+      log.error "question is not open."
+      exit 0
+    end
+    question_count = game_data[:active_question_max_answer_id] + 1
 
     player_ids = []
     game.collection('players').where('is_active', '==', true).get.each do |player_snapshot|
@@ -62,9 +69,9 @@ class LoadTest < Thor
     sent_this_second = 0
     loop do
       db.transaction do |tx|
-        50.times do
+        5.times do
           player_id = player_ids[rand(player_count)]
-          game.collection('player_answers').doc(player_id).set({answer_id: rand(4)})
+          game.collection('player_answers').doc(player_id).set({answer_id: rand(question_count)})
           sent_this_second += 1
         end
       end

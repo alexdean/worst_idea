@@ -247,6 +247,7 @@ class WorstIdeaAdmin < Thor
         next
       end
 
+      total_votes = 0
       summary = {}
       # fully populate the hash, so we correctly set a value back to 0 if users had chosen it but no longer do.
       # active_question_max_answer_id is 0-indexed. 2 questions have max_id 1
@@ -272,6 +273,7 @@ class WorstIdeaAdmin < Thor
         # TODO: paranoia. hash should already have all keys so this should be unnecessary.
         # summary[answer_id] ||= 0
         summary[answer_id] += 1
+        total_votes += 1
       end
 
       now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -288,8 +290,10 @@ class WorstIdeaAdmin < Thor
           tx.update(game.col("questions").doc(active_question_id), {summary: summary})
           tx.update(game, {summary: summary})
         end
-        log.debug "summary written."
-        log.info summary
+        log.batch do
+          log.debug "summary written. total_votes:#{total_votes}"
+          log.info summary
+        end
 
         last_summary = summary
       end
@@ -516,17 +520,27 @@ class WorstIdeaAdmin < Thor
     if current_game_state_data[:current_stage] == GameState::PREPARING
       log.info "generating short codes for all players."
       assign_short_codes(game)
+
+      log.info "creating player_answers"
+      db.transaction do |tx|
+        game.col('players').get do |snapshot|
+          tx.set(game.col('player_answers').doc(snapshot.document_id), {answer_id: nil})
+        end
+      end
     end
   end
 
   desc "current", "report current game state"
   method_option :game, type: :string, required: true, aliases: '-g'
   def current_state
-    game_data = fetch_game(options[:game]).get
+    game = fetch_game(options[:game])
+    game_data = game.get
+    player_count = game.col('players').where('is_active', '==', true).get.count
 
     log.info "                current_stage: #{game_data[:current_stage]}"
     log.info "           active_question_id: #{game_data[:active_question_id]}"
     log.info "active_question_max_answer_id: #{game_data[:active_question_max_answer_id]}"
+    log.info "               active_players: #{player_count}"
   end
 
   desc "add-question", "add a new question to the game"
