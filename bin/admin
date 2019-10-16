@@ -71,9 +71,19 @@ class WorstIdeaAdmin < Thor
         exit 1
       end
 
+      log.info "Setting player state. Generating short codes and making all players active."
+      players = game.collection('players').get
       db.transaction do |tx|
-        game.collection('players').get.each do |player_snapshot|
-          tx.set(player_snapshot.reference, {is_active: true, short_code: unique_short_code})
+        players.each do |player_snapshot|
+          tx.set(player_snapshot.reference, {is_active: true, short_code: unique_short_code, name: player_snapshot[:name]})
+        end
+      end
+
+      log.info "Creating player_answers for each player."
+      # players = game.collection('players').get
+      db.transaction do |tx|
+        players.each do |player_snapshot|
+          tx.set(game.col('player_answers').doc(player_snapshot.document_id), {answer_id: nil})
         end
       end
     end
@@ -461,25 +471,31 @@ class WorstIdeaAdmin < Thor
     case game_data[:current_stage]
     when GameState::JOINING then
       next_game_state.set(:current_stage, GameState::PREPARING)
+      log.info "Make sure to crown an Emperor before opening the first question."
     when GameState::PREPARING then
       next_question_id = 0
+      if game_data[:leader_player_id].nil?
+        log.error "No Emperor. Crown somebody before opening first question."
+        exit 1
+      end
     when GameState::QUESTION_OPEN then
       if game_data[:leader_player_id].nil?
         log.error "game has no Emperor. cannot calculate results without one."
         exit 1
       end
       next_game_state.set(:current_stage, GameState::QUESTION_CLOSED)
-      log.info "make sure to eliminate players before moving to RESULTS stage."
+      log.info "Make sure to eliminate players before moving to results stage."
     when GameState::QUESTION_CLOSED then
       next_game_state.set(:current_stage, GameState::QUESTION_RESULTS)
     when GameState::QUESTION_RESULTS then
       current_question_id = game_data[:active_question_id]
       next_question_id = current_question_id + 1
     when GameState::FINISHED then
-      log.info 'game is already finished. not advancing.'
+      log.info 'Game is already finished. Not advancing.'
       exit 0
     else
-      log.error "game is in unknown stage '#{game_data[:current_stage]}'."
+      log.error "Game is in unknown stage '#{game_data[:current_stage]}'."
+      exit 1
     end
 
     if next_question_id
@@ -518,15 +534,7 @@ class WorstIdeaAdmin < Thor
 
     # actions to take once state has changed.
     if current_game_state_data[:current_stage] == GameState::PREPARING
-      log.info "generating short codes for all players."
       finalize_players(game)
-
-      log.info "creating player_answers"
-      db.transaction do |tx|
-        game.col('players').get do |snapshot|
-          tx.set(game.col('player_answers').doc(snapshot.document_id), {answer_id: nil})
-        end
-      end
     end
   end
 
@@ -536,6 +544,12 @@ class WorstIdeaAdmin < Thor
     game = fetch_game(options[:game])
     game_data = game.get
     player_count = game.col('players').where('is_active', '==', true).get.count
+
+    emperor_id = game_data[:leader_player_id]
+    if emperor_id
+      game.collection('players').doc(emperor_id)
+    end
+    # emperor =
 
     log.info "                current_stage: #{game_data[:current_stage]}"
     log.info "           active_question_id: #{game_data[:active_question_id]}"

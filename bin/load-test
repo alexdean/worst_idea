@@ -35,6 +35,8 @@ class LoadTest < Thor
   def setup
     game = fetch_game(options[:game])
 
+    # TODO: transaction. commit every 50 records.
+
     options[:player_count].times do
       player_id = SecureRandom.hex
       log.debug "creating player #{player_id}"
