@@ -218,6 +218,7 @@ const Player = () => {
           )}
 
           {(stage === "question-open" || stage === "question-closed") &&
+            playerIsActive &&
             questions.length > 0 &&
             currentQuestionId !== null && (
               <div className="p-8">

@@ -162,7 +162,7 @@ const Projector = () => {
             <div className="w-full">
               <div className="">
                 <div className="font-thin" style={{ fontSize: "9rem" }}>
-                  The Curator of Bad Ideas
+                  The Emperor/empress of Bad Ideas
                 </div>
                 {stage === "joining" && (
                   <span
@@ -177,7 +177,7 @@ const Projector = () => {
               </div>
               {stage === "preparing" && (
                 <div className="" style={{ fontSize: "7rem" }}>
-                  {gameValue.data().active_player_count} curators
+                  {gameValue.data().active_player_count} remaining
                 </div>
               )}
             </div>
