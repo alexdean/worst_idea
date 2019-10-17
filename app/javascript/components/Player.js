@@ -218,11 +218,10 @@ const Player = () => {
           )}
 
           {(stage === "question-open" || stage === "question-closed") &&
-            playerIsActive &&
             questions.length > 0 &&
             currentQuestionId !== null && (
               <div className="p-8">
-                <div className="text-3xl font-bold leading-tight mb-6 text-center">
+                <div className="text-xl leading-tight mb-6 text-center">
                   {questions[currentQuestionId].question}
                 </div>
                 <div className="">
@@ -238,14 +237,18 @@ const Player = () => {
                         <div
                           onClick={e => onAnswerSelect(e, i)}
                           className={`answer text-lg rounded-full inline-block w-full overflow-hidden text-center ${
-                            selectedAnswer == i ? "bg-red-600" : "bg-gray-800"
+                            selectedAnswer == i
+                              ? "bg-indigo-600"
+                              : "bg-gray-800"
                           }`}
                         >
                           <div
                             className="p-3"
-                            style={{
-                              backgroundImage: `linear-gradient(90deg, rgba(246,246,246,.2) 0%, rgba(246,246,246,.2) ${percentage}%, rgba(246,246,246,0) ${percentage}%)`
-                            }}
+                            style={
+                              {
+                                // backgroundImage: `linear-gradient(90deg, rgba(246,246,246,.2) 0%, rgba(246,246,246,.2) ${percentage}%, rgba(246,246,246,0) ${percentage}%)`
+                              }
+                            }
                           >
                             {answer}
                           </div>
@@ -281,9 +284,9 @@ const Player = () => {
             <div className="absolute inset-0 flex items-center justify-center content-center text-white">
               <div className="text-center">
                 <div className="text-3xl font-bold px-8 leading-tight">
-                  You're still alive!
+                  You survived
                 </div>
-                <div className="my-5 text-md">...</div>
+                <div className="my-5 text-md"></div>
               </div>
             </div>
           </div>
@@ -325,7 +328,7 @@ const Player = () => {
                     {playerValue.data().short_code &&
                       playerValue.data().short_code}
                   </div>
-                  <div className="text-sm">
+                  <div className="text-sm hidden">
                     {playerIsActive ? "In" : "Eliminated"}
                   </div>
                 </div>

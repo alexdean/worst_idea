@@ -160,23 +160,24 @@ const Projector = () => {
         <div className="p-20 w-full">
           {(stage === "joining" || stage === "preparing") && (
             <div className="w-full">
-              <div
-                className=""
-                style={{
-                  fontSize: "5rem"
-                }}
-              >
-                <div className="font-thin" style={{ fontSize: "6rem" }}>
+              <div className="">
+                <div className="font-thin" style={{ fontSize: "9rem" }}>
                   The Curator of Bad Ideas
                 </div>
-
-                <span className="font-bold text-red-600">
-                  go.ted.com/badideas
-                </span>
+                {stage === "joining" && (
+                  <span
+                    className="font-bold text-indigo-500"
+                    style={{
+                      fontSize: "7rem"
+                    }}
+                  >
+                    go.ted.com/badideas
+                  </span>
+                )}
               </div>
               {stage === "preparing" && (
-                <div className="text-5xl font-thin">
-                  {gameValue.data().active_player_count} players remaining
+                <div className="" style={{ fontSize: "7rem" }}>
+                  {gameValue.data().active_player_count} curators
                 </div>
               )}
             </div>
@@ -187,9 +188,9 @@ const Projector = () => {
               {currentQuestionId !== null && gameValue && (
                 <div className="">
                   <div
-                    className="font-bold mb-10"
+                    className="font-bold mb-10 leading-tight"
                     style={{
-                      fontSize: "4rem"
+                      fontSize: "7rem"
                     }}
                   >
                     {questions[currentQuestionId].question}
@@ -208,20 +209,33 @@ const Projector = () => {
                         <div className="my-4" key={i}>
                           <div
                             onClick={e => onAnswerSelect(e, i)}
-                            className={`answer text-lg inline-block w-full overflow-hidden`}
+                            className={`answer text-lg inline-block w-full overflow-hidden rounded relative`}
                           >
                             <div
-                              className="p-6 text-3xl"
+                              className="h-full absolute bg-indigo-900"
+                              style={{ zIndex: 9, width: `${percentage}%` }}
+                            ></div>
+                            <div
+                              className="p-6 text-5xl relative flex items-center justify-between"
                               style={{
-                                backgroundImage: `linear-gradient(90deg, rgba(246,0,0,.5) 0%, rgba(246,0,0,.5) ${percentage}%, rgba(246,0,0,0) ${percentage}%)`
+                                zIndex: 10,
+                                backgroundColor: "rgba(255,255,255,0.05)"
+                                // backgroundImage: `linear-gradient(90deg, rgba(246,0,0,.5) 0%, rgba(246,0,0,.5) ${percentage}%, rgba(246,0,0,0) ${percentage}%)`
                               }}
                             >
-                              {stage === "question-closed" && leaderAnswer && (
-                                <span className="">
-                                  {leaderAnswer.data().answer_id === i && `👑 `}
-                                </span>
-                              )}
-                              {answer} {count > 0 && `(${percentage}%)`}
+                              <div className="">
+                                {stage === "question-closed" &&
+                                  leaderAnswer && (
+                                    <span className="">
+                                      {leaderAnswer.data().answer_id === i &&
+                                        `👑 `}
+                                    </span>
+                                  )}
+                                {answer}
+                              </div>
+                              <div className="text-4xl">
+                                {count > 0 && `(${percentage}%)`}
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -237,12 +251,14 @@ const Projector = () => {
               <div
                 className="font-bold"
                 style={{
-                  fontSize: "10rem"
+                  fontSize: "14rem"
                 }}
               >
                 {gameValue.data().active_player_count}
               </div>
-              <div className="text-5xl font-thin">players remaining</div>
+              <div className="font-thin" style={{ fontSize: "6rem" }}>
+                players remaining
+              </div>
             </div>
           )}
         </div>
