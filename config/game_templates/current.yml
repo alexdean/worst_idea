@@ -1,14 +1,27 @@
 questions:
-  "TED's new partnership":
-    - TED@NRA
-    - TED@CambridgeAnalytica
-    - TED@Monsanto
-    - TED@Ticketmaster
-  "Small Thing Big Idea: Season 2 episode 1":
-    - Single use plastic bags
-    - '"Subscribe to our newsletter" popups'
-    - Fake news
   "TED's next audacious initiative":
     - Flirtatious project
     - Superstitious project
     - Fallacious project
+  "TED's next Institute event":
+    - TED@NRA
+    - TED@CambridgeAnalytica
+    - TED@Monsanto
+    - TED@Ticketmaster
+  "Small Thing Big Idea: Season 2 Episode 1":
+    - Single use plastic bags
+    - '"Subscribe to our newsletter" popups'
+    - MAGA hats
+  "TED's next podcast series":
+    - 99% Inaudible
+    - Joe Rogan's TED Experience
+    - The TED Exit Interview
+  "Conference Installations":
+    - "Scratch n' Sniff photo booth"
+    - The Mosquito Room
+    - 100% Folgers coffee
+    - The Ball Pit
+  "Who should we eliminate?":
+    - "People who agree."
+    - "People who disagree."
+
