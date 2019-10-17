@@ -110,7 +110,7 @@ class WorstIdeaAdmin < Thor
 
   desc "init", "Create a new game from the given template."
   method_option :production, type: :boolean, default: false
-  method_option :template, type: :boolean, default: 'test', aliases: '-t'
+  method_option :template, type: :string, default: 'test', aliases: '-t'
   method_option :name, type: :string, aliases: '-n', desc: "nice name for the game"
   method_option :game, type: :string, aliases: '-g'
   def init
