@@ -189,9 +189,9 @@ const Player = () => {
                 style={{
                   backgroundSize: "cover",
                   backgroundRepeat: "no-repeat",
-                  backgroundPosition: "50% 50%",
-                  backgroundImage:
-                    // "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
+                  backgroundPosition: "50% 50%"
+                  // backgroundImage:
+                  // "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
                 }}
               />
               <div className="absolute inset-0 flex items-center justify-center content-center text-white">
@@ -276,9 +276,9 @@ const Player = () => {
               style={{
                 backgroundSize: "cover",
                 backgroundRepeat: "no-repeat",
-                backgroundPosition: "50% 50%",
-                backgroundImage:
-                  // "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
+                backgroundPosition: "50% 50%"
+                // backgroundImage:
+                // "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
               }}
             />
             <div className="absolute inset-0 flex items-center justify-center content-center text-white">
@@ -298,9 +298,9 @@ const Player = () => {
               style={{
                 backgroundSize: "cover",
                 backgroundRepeat: "no-repeat",
-                backgroundPosition: "50% 50%",
-                backgroundImage:
-                  // "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
+                backgroundPosition: "50% 50%"
+                // backgroundImage:
+                // "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
               }}
             />
             <div className="absolute inset-0 flex items-center justify-center content-center text-white">
