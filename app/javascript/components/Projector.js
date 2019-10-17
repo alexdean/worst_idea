@@ -18,8 +18,10 @@ const Projector = () => {
   const [leaderId, setLeaderId] = useState(null); // stores uid of the 'emperor'
   const [currentQuestionId, setCurrentQuestionId] = useState(null); // stores current question index
   const [summary, setSummary] = useState({ total: 0 }); // store the current question's summary
+  const [prevActivePlayerCount, setPrevActivePlayerCount] = useState(0);
+  const [activePlayerCount, setActivePlayerCount] = useState(0);
 
-  // Establishes and maintains Firebase auth. We can check the value of 'user' and do things based on that
+  // Establishes and maintains Firebase auth. We can check the value of 'user' and do things based on that;
   const [user, initializing, error] = useAuthState(firebase.auth());
 
   // Get and store questions for the gameId stored in the above state...
@@ -133,6 +135,11 @@ const Projector = () => {
       setCurrentQuestionId(gameValue.data().active_question_id);
       setLeaderId(gameValue.data().leader_player_id);
       gameValue.data().summary && summarize(gameValue.data().summary);
+
+      if (gameValue.data().active_player_count != activePlayerCount) {
+        setPrevActivePlayerCount(activePlayerCount);
+        setActivePlayerCount(gameValue.data().active_player_count);
+      }
     }
   }, [gameValue]);
 
@@ -158,11 +165,11 @@ const Projector = () => {
     return (
       <div className="text-gray-200 h-screen flex justify-center items-center">
         <div className="p-20 w-full">
-          {(stage === "joining" || stage === "preparing") && (
+          {stage === "joining" && (
             <div className="w-full">
               <div className="">
-                <div className="font-thin" style={{ fontSize: "9rem" }}>
-                  The Emperor/empress of Bad Ideas
+                <div className="font-thin" style={{ fontSize: "8rem" }}>
+                  The Emperor/Empress of Bad Ideas
                 </div>
                 {stage === "joining" && (
                   <span
@@ -175,11 +182,6 @@ const Projector = () => {
                   </span>
                 )}
               </div>
-              {stage === "preparing" && (
-                <div className="" style={{ fontSize: "7rem" }}>
-                  {gameValue.data().active_player_count} remaining
-                </div>
-              )}
             </div>
           )}
 
@@ -246,18 +248,21 @@ const Projector = () => {
               )}
             </div>
           )}
-          {stage === "question-results" && (
+          {(stage === "question-results" || stage === "preparing") && (
             <div className="w-full text-center">
               <div
                 className="font-bold"
                 style={{
-                  fontSize: "14rem"
+                  fontSize: "18rem"
                 }}
               >
-                {gameValue.data().active_player_count}
+                {prevActivePlayerCount != 0 && (
+                  <s className="mr-4 font-thin">{prevActivePlayerCount}</s>
+                )}
+                {activePlayerCount}
               </div>
               <div className="font-thin" style={{ fontSize: "6rem" }}>
-                players remaining
+                remaining
               </div>
             </div>
           )}

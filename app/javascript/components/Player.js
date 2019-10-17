@@ -197,10 +197,10 @@ const Player = () => {
               <div className="absolute inset-0 flex items-center justify-center content-center text-white">
                 <div className="text-center">
                   <div className="text-3xl font-bold px-8 leading-tight">
-                    Welcome!
+                    Hey {playerValue && playerValue.data().name}
                   </div>
                   <div className="my-5 text-md">
-                    Hang on just a minute while other players join.
+                    Hang on while other players join.
                   </div>
                 </div>
               </div>
@@ -285,14 +285,14 @@ const Player = () => {
             <div className="absolute inset-0 flex items-center justify-center content-center text-white">
               <div className="text-center">
                 <div className="text-3xl font-bold px-8 leading-tight">
-                  You survived
+                  You survived 🥳
                 </div>
                 <div className="my-5 text-md"></div>
               </div>
             </div>
           </div>
         )}
-        {stage === "question-results" && !playerIsActive && (
+        {!playerIsActive && (
           <div className="">
             <div
               className="inset-0 absolute opacity-50"
@@ -304,12 +304,12 @@ const Player = () => {
                 // "url(https://media.giphy.com/media/tXL4FHPSnVJ0A/giphy.gif)"
               }}
             />
-            <div className="absolute inset-0 flex items-center justify-center content-center text-white">
+            <div className="absolute inset-0 flex items-center justify-center content-center text-white bg-red-700">
               <div className="text-center">
                 <div className="text-3xl font-bold px-8 leading-tight">
                   You're eliminated 🙁
                 </div>
-                <div className="my-5 text-md">Sorry.</div>
+                <div className="my-5 text-md"></div>
               </div>
             </div>
           </div>
